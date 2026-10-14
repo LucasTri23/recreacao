@@ -54,6 +54,11 @@ service cloud.firestore {
         && request.resource.data.email == request.auth.token.email
         && request.resource.data.displayName is string && request.resource.data.displayName.size() <= 120
         && request.resource.data.createdAt == request.time;
+      allow update: if request.auth != null && request.auth.uid == uid
+        && request.auth.token.email_verified == true
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['email','displayName'])
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.displayName is string && request.resource.data.displayName.size() <= 120;
       allow update: if admin() && request.auth.uid != uid && resource.data.role != 'admin'
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role','team','updatedAt'])
         && request.resource.data.updatedAt == request.time

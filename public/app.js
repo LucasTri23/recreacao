@@ -16,21 +16,28 @@ accessClose.setAttribute('aria-label','Fechar');
 accessClose.onclick = () => accessDialog.close();
 accessTitle.append(element('h2','Diretores e acessos'),accessClose);
 const accessList = element('div');
-accessDialog.append(accessTitle,element('p','Escolha o time de cada diretor. Quem ainda não apareceu precisa entrar no site com Google uma vez.'),accessList);
+const accessSearch = element('input');
+accessSearch.type = 'search';
+accessSearch.placeholder = 'Buscar diretor por nome, e-mail ou time';
+accessSearch.setAttribute('aria-label',accessSearch.placeholder);
+accessSearch.oninput = renderAccess;
+accessDialog.append(accessTitle,element('p','Escolha o time de cada diretor pelo e-mail da conta Google. Quem ainda não apareceu precisa entrar no site com Google uma vez.'),accessSearch,accessList);
 document.body.append(accessDialog);
 accessButton.onclick = () => { renderAccess(); accessDialog.showModal(); };
 function renderAccess() {
   accessList.replaceChildren();
-  if (!accessUsers.length) accessList.append(element('p','Nenhuma conta encontrada.'));
-  const sorted = [...accessUsers].sort((a,b) => (a.role === 'pending' ? 0 : 1) - (b.role === 'pending' ? 0 : 1) || (a.displayName || a.email || '').localeCompare(b.displayName || b.email || '','pt-BR'));
+  const query = identity(accessSearch.value, '').slice(0,-1);
+  const sorted = accessUsers.filter(a => identity(`${a.displayName || ''} ${a.email || ''} ${a.team || ''}`, '').includes(query)).sort((a,b) => (a.role === 'pending' ? 0 : 1) - (b.role === 'pending' ? 0 : 1) || (a.email || a.displayName || '').localeCompare(b.email || b.displayName || '','pt-BR'));
+  if (!sorted.length) accessList.append(element('p','Nenhuma conta encontrada.'));
   for (const account of sorted) {
     const item = element('div',null,'access-item');
-    item.append(element('strong',account.displayName || account.email || 'Conta cadastrada'),element('small',account.email || `Identificação: ${account.id}`));
+    item.append(element('strong',account.email || 'E-mail ainda não disponível'),element('small',account.displayName || 'Conta Google'));
+    if (!account.email) item.append(element('p','Peça para esta pessoa entrar novamente com Google para atualizar o e-mail.'));
     if (account.role === 'admin') item.append(element('p','Administrador'));
     else {
       const form = element('form',null,'access-controls');
       const select = element('select');
-      select.setAttribute('aria-label',`Time de ${account.displayName || account.email || account.id}`);
+      select.setAttribute('aria-label',`Time de ${account.email || account.displayName || 'conta Google'}`);
       options(select,['',...TEAMS]); select.options[0].textContent = 'Sem acesso · aguardando liberação'; select.value = account.team || '';
       const save = element('button','Salvar','primary');
       const feedback = element('p',null,'access-feedback'); feedback.setAttribute('role','status');
@@ -73,7 +80,7 @@ function render() {
 function renderPlayers() {
   const search = identity($('#search').value, '');
   const selected = $('#team-filter').value;
-  const list = players.filter(p => (!selected || p.teams.includes(selected)) && (filter !== 'two' || p.teams.length === 2) && identity(p.name + ' ' + p.congregation, '').includes(search.slice(0, -1))).sort((a,b) => a.name.localeCompare(b.name, 'pt-BR'));
+  const list = players.filter(p => (!selected || p.teams.includes(selected)) && (filter !== 'two' || p.teams.length === 2) && identity(p.name + ' ' + p.congregation + ' ' + p.teams.join(' '), '').includes(search.slice(0, -1))).sort((a,b) => a.name.localeCompare(b.name, 'pt-BR'));
   $('#results-count').textContent = `${list.length} ${list.length === 1 ? 'jogador' : 'jogadores'}`;
   $('#empty').hidden = list.length > 0;
   $('#empty h3').textContent = players.length ? 'Nenhum jogador encontrado' : 'A turma começa por aqui';
@@ -84,14 +91,19 @@ function renderPlayers() {
     person.append(element('span', p.name.split(' ').filter(Boolean).slice(0,2).map(w => w[0]).join('').toUpperCase(), 'avatar'), element('span', p.name)); name.append(person);
     const teams = element('td'); p.teams.forEach(t => { const tag = element('span', t, 'tag'); tag.style.cssText = style(t); teams.append(tag); });
     const status = element('td', p.teams.length === 2 ? '● Dois times' : '● Um time', 'status'); const actions = element('td');
+    if (p.teams.length < 2 && TEAMS.some(t => allowed(t) && !p.teams.includes(t))) { const b = element('button', 'Adicionar a outro time ＋', 'row-action'); b.onclick = () => openAdd(p); actions.append(b); }
     if (windowOpen && p.teams.some(allowed)) { const b = element('button', 'Transferir ↔', 'row-action'); b.onclick = () => openTransfer(p); actions.append(b); }
     row.append(name, element('td', p.congregation), teams, status, actions); return row;
   }));
 }
-function openAdd() {
-  const teams = TEAMS.filter(allowed);
+function openAdd(player = null) {
+  const teams = TEAMS.filter(t => allowed(t) && !player?.teams.includes(t));
   if (!teams.length) return toast('Entre com uma conta de diretor autorizada para cadastrar.');
   $('#player-form').reset(); $('#player-form .form-error').textContent = ''; options($('#player-form select'), teams);
+  for (const field of ['name','congregation']) {
+    const input = $(`#player-form [name=${field}]`);
+    input.value = player?.[field] || ''; input.readOnly = !!player;
+  }
   if (teams.includes($('#team-filter').value)) $('#player-form select').value = $('#team-filter').value;
   $('#player-dialog').showModal();
 }
@@ -115,7 +127,7 @@ async function mutate(action, data) {
   }
   saveDemo();
 }
-for (const id of ['#add-player','#empty-add']) $(id).onclick = openAdd;
+for (const id of ['#add-player','#empty-add']) $(id).onclick = () => openAdd();
 document.querySelectorAll('[data-close]').forEach(b => b.onclick = () => b.closest('dialog').close());
 $('#search').oninput = renderPlayers; $('#team-filter').onchange = renderPlayers;
 TEAMS.forEach(t => { const o = element('option', t); o.value = t; $('#team-filter').append(o); });

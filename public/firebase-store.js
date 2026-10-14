@@ -2,7 +2,13 @@ import { TEAMS, membership, playerId } from './domain.js';
 export async function ensureAccessProfile(sdk, db, user) {
   const ref = sdk.doc(db, 'users', user.uid);
   await sdk.runTransaction(db, async tx => {
-    if ((await tx.get(ref)).data()) return;
+    const previous = (await tx.get(ref)).data();
+    if (previous) {
+      const email = user.email || '';
+      const displayName = (user.displayName || 'Novo diretor').slice(0,120);
+      if (previous.email !== email || previous.displayName !== displayName) tx.set(ref, {...previous,email,displayName});
+      return;
+    }
     tx.set(ref, {role:'pending', team:'', displayName:(user.displayName || 'Novo diretor').slice(0,120), email:user.email || '', createdAt:sdk.serverTimestamp()});
   });
 }

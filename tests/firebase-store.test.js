@@ -36,6 +36,27 @@ test('primeiro login solicita acesso sem escolher time ou se promover', async ()
   await ensureAccessProfile(sdk,{}, {uid:'director',displayName:'Admin',email:'admin@example.com'});
   assert.equal(records.get('users/director').role,'admin');
 });
+
+test('login atualiza e-mail de conta antiga preservando permissão e time', async () => {
+  const {sdk,records} = setup({role:'director',team:'VERDE'});
+  await ensureAccessProfile(sdk,{}, {uid:'director',displayName:'João',email:'joao@gmail.com'});
+  assert.deepEqual(records.get('users/director'),{role:'director',team:'VERDE',displayName:'João',email:'joao@gmail.com'});
+});
+
+test('administrador inscreve em qualquer time e adiciona segundo time com janela fechada', async () => {
+  const {api,records} = setup({role:'admin'}, {'settings/transfers':{open:false}});
+  const {TEAMS} = await import('../public/domain.js');
+  for (const team of TEAMS) {
+    await api('addPlayer',{name:`Jogador ${team}`,congregation:'Centro',team});
+    const id = await playerId(`Jogador ${team}`,'Centro');
+    assert.deepEqual(records.get(`players/${id}`).teams,[team]);
+  }
+  await api('addPlayer',{name:'Jogador BRANCO',congregation:'Centro',team:'VERDE'});
+  const id = await playerId('Jogador BRANCO','Centro');
+  const player = records.get(`players/${id}`);
+  assert.deepEqual(player.teams,['BRANCO','VERDE']);
+  assert.equal(records.get(`events/${player.lastEvent}`).to,'VERDE');
+});
 test('administrador vincula, troca o time e suspende acesso preservando identidade', async () => {
   const {api,records} = setup({role:'admin'}, {'users/new':{role:'pending',team:'',email:'diretor@example.com',displayName:'Diretor'}});
   await api('assignDirector',{uid:'new',team:'VERDE'});
