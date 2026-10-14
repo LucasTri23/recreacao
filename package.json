@@ -1,0 +1,16 @@
+{
+  "name": "recreacao",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "start": "node server.mjs",
+    "firebase:login": "firebase login",
+    "deploy": "firebase deploy --only firestore:rules",
+    "deploy:rules": "firebase deploy --only firestore:rules"
+  },
+  "devDependencies": {
+    "firebase-tools": "^15.33.0"
+  }
+}

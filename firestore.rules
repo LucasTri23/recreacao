@@ -1,0 +1,90 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function profile() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
+    function member() { return request.auth != null && profile().role in ['admin', 'director']; }
+    function admin() { return member() && profile().role == 'admin'; }
+    function manages(team) { return admin() || (member() && profile().team == team); }
+    function normalized(s) {
+      return s.lower().replace('[àáâãäå]', 'a').replace('[èéêë]', 'e')
+        .replace('[ìíîï]', 'i').replace('[òóôõö]', 'o').replace('[ùúûü]', 'u')
+        .replace('ç', 'c').replace('ñ', 'n').replace('[ýÿ]', 'y')
+        .replace('[̀-ͯ]', '').trim().replace('\\s+', ' ');
+    }
+    function validPlayer(id, p) {
+      return p.keys().hasAll(['name','congregation','teams','updatedAt','lastEvent'])
+        && p.keys().hasOnly(['name','congregation','teams','updatedAt','lastEvent'])
+        && p.name is string && p.name.size() >= 3 && p.name.size() <= 120
+        && p.congregation is string && p.congregation.size() >= 2 && p.congregation.size() <= 120
+        && !p.name.matches('.*[|].*') && !p.congregation.matches('.*[|].*')
+        && id == hashing.sha256(normalized(p.name) + '|' + normalized(p.congregation)).toHexString()
+        && p.teams is list && p.teams.size() >= 1 && p.teams.size() <= 2
+        && p.teams.toSet().size() == p.teams.size()
+        && p.teams.toSet().hasOnly(['BRANCO','PRETO','BLUES','COIOTES','VETOR NORTE','AMARELO','LARANJA','VERDE'])
+        && p.updatedAt == request.time && p.lastEvent is string;
+    }
+    function playerEvent(id, p, kind, from, to) {
+      let e = getAfter(/databases/$(database)/documents/events/$(p.lastEvent)).data;
+      return e.playerId == id && e.name == p.name && e.actor == request.auth.uid
+        && e.at == request.time && e.kind == kind && e.from == from && e.to == to
+        && e.detail == (kind == 'add' ? 'Inscrição em ' + to : from + ' → ' + to);
+    }
+    function addition(id, old, p) {
+      let added = p.teams.removeAll(old.teams);
+      return p.teams.size() == old.teams.size() + 1 && p.teams.toSet().hasAll(old.teams)
+        && added.size() == 1 && manages(added[0])
+        && playerEvent(id, p, 'add', '', added[0]);
+    }
+    function transfer(id, old, p) {
+      let removed = old.teams.removeAll(p.teams);
+      let added = p.teams.removeAll(old.teams);
+      return p.teams.size() == old.teams.size() && removed.size() == 1 && added.size() == 1
+        && manages(removed[0])
+        && get(/databases/$(database)/documents/settings/transfers).data.open == true
+        && playerEvent(id, p, 'transfer', removed[0], added[0]);
+    }
+    match /users/{uid} {
+      allow get: if request.auth != null && request.auth.uid == uid;
+      allow list, write: if false;
+    }
+    match /players/{id} {
+      allow read: if member();
+      allow create: if member() && validPlayer(id, request.resource.data)
+        && request.resource.data.teams.size() == 1 && manages(request.resource.data.teams[0])
+        && playerEvent(id, request.resource.data, 'add', '', request.resource.data.teams[0]);
+      allow update: if member() && validPlayer(id, request.resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['teams','updatedAt','lastEvent'])
+        && request.resource.data.lastEvent != resource.data.lastEvent
+        && (addition(id, resource.data, request.resource.data) || transfer(id, resource.data, request.resource.data));
+      allow delete: if false;
+    }
+    match /settings/transfers {
+      allow read: if member();
+      allow create, update: if admin()
+        && request.resource.data.keys().hasOnly(['open','updatedAt','lastEvent'])
+        && request.resource.data.open is bool && request.resource.data.updatedAt == request.time
+        && getAfter(/databases/$(database)/documents/events/$(request.resource.data.lastEvent)).data.kind == 'window'
+        && getAfter(/databases/$(database)/documents/events/$(request.resource.data.lastEvent)).data.open == request.resource.data.open
+        && getAfter(/databases/$(database)/documents/events/$(request.resource.data.lastEvent)).data.actor == request.auth.uid
+        && getAfter(/databases/$(database)/documents/events/$(request.resource.data.lastEvent)).data.at == request.time;
+      allow delete: if false;
+    }
+    match /events/{id} {
+      allow read: if member();
+      allow create: if member() && request.resource.data.actor == request.auth.uid
+        && request.resource.data.at == request.time && (
+          (request.resource.data.kind in ['add','transfer']
+            && request.resource.data.keys().hasOnly(['actor','at','kind','playerId','name','from','to','detail'])
+            && getAfter(/databases/$(database)/documents/players/$(request.resource.data.playerId)).data.lastEvent == id
+            && getAfter(/databases/$(database)/documents/players/$(request.resource.data.playerId)).data.updatedAt == request.time)
+          || (request.resource.data.kind == 'window' && admin()
+            && request.resource.data.keys().hasOnly(['actor','at','kind','open','name','detail'])
+            && request.resource.data.name == 'Janela de transferências'
+            && request.resource.data.detail == (request.resource.data.open ? 'Aberta pela administração' : 'Fechada pela administração')
+            && getAfter(/databases/$(database)/documents/settings/transfers).data.lastEvent == id
+            && getAfter(/databases/$(database)/documents/settings/transfers).data.updatedAt == request.time)
+        );
+      allow update, delete: if false;
+    }
+  }
+}
