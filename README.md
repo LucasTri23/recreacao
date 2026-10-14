@@ -20,7 +20,7 @@ Execute uma vez `npm install`, depois `npm run firebase:login` e `npm run deploy
 4. Execute o workflow Publicar no GitHub Pages, ou faça um push na branch main.
 5. Adicione o domínio do endereço publicado aos domínios autorizados no Firebase Authentication.
 
-O workflow publica somente a pasta `public`. As regras do Firestore são publicadas separadamente pelo comando acima. Não salve dados de jogadores ou credenciais privadas no GitHub.
+O workflow executa `npm run build` e publica a pasta `dist`. Os arquivos JavaScript e CSS recebem nomes por versão para impedir que o cache misture módulos de publicações diferentes. As regras do Firestore são publicadas separadamente pelo comando acima. Não salve dados de jogadores ou credenciais privadas no GitHub.
 
 ## Liberar contas
 

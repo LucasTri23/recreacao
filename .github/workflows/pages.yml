@@ -23,10 +23,11 @@ jobs:
           node-version: 22
       - run: npm test
       - run: node --check public/app.js && node --check public/firebase-store.js
+      - run: npm run build
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: public
+          path: dist
       - name: Publicar
         id: deployment
         uses: actions/deploy-pages@v4
