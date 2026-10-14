@@ -93,7 +93,9 @@ function renderPlayers() {
     const status = element('td', p.teams.length === 2 ? '● Dois times' : '● Um time', 'status'); const actions = element('td');
     if (p.teams.length < 2 && TEAMS.some(t => allowed(t) && !p.teams.includes(t))) { const b = element('button', 'Adicionar a outro time ＋', 'row-action'); b.onclick = () => openAdd(p); actions.append(b); }
     if (windowOpen && p.teams.some(allowed)) { const b = element('button', 'Transferir ↔', 'row-action'); b.onclick = () => openTransfer(p); actions.append(b); }
-    row.append(name, element('td', p.congregation), teams, status, actions); return row;
+    row.append(name, element('td', p.congregation), teams, status, actions);
+    [...row.children].forEach((cell,index) => cell.dataset.label = ['Jogador','Congregação','Times','Inscrição','Ações'][index]);
+    return row;
   }));
 }
 function openAdd(player = null) {
@@ -169,7 +171,8 @@ if (demo) {
       user = current; profile = null; players = []; logs = []; accessUsers = []; windowOpen = false; render();
       if (!current) { $('#mode-notice').textContent = 'Entre com sua conta de diretor para acessar os jogadores.'; return; }
       try {
-        await ensureAccessProfile(dbSDK,db,current);
+        const accessResult = await ensureAccessProfile(dbSDK,db,current);
+        if (accessResult?.metadataSyncPending) toast('Você entrou. O e-mail da conta será atualizado quando as regras do banco forem publicadas.');
         if (version !== authVersion) return;
         const error = e => toast('Não foi possível sincronizar: ' + e.message);
         unsubscribers.push(dbSDK.onSnapshot(dbSDK.doc(db,'users',current.uid), snap => {
@@ -191,7 +194,13 @@ if (demo) {
           },error));
           render();
         },error));
-      } catch(e) { toast(e.message); }
+      } catch(e) {
+        const message = e.code === 'permission-denied'
+          ? 'O banco bloqueou seu acesso. A administração precisa publicar as regras do Firestore para liberar o login.'
+          : 'Não foi possível concluir o login: ' + e.message;
+        $('#mode-notice').textContent = message;
+        toast(message);
+      }
     });
   } catch(e) { $('#mode-notice').textContent = 'Falha ao conectar ao Firebase. Verifique a configuração e a conexão.'; }
 }

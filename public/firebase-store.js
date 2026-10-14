@@ -1,8 +1,10 @@
 import { TEAMS, membership, playerId } from './domain.js';
 export async function ensureAccessProfile(sdk, db, user) {
   const ref = sdk.doc(db, 'users', user.uid);
-  await sdk.runTransaction(db, async tx => {
+  let existingProfile = null;
+  try { await sdk.runTransaction(db, async tx => {
     const previous = (await tx.get(ref)).data();
+    existingProfile = previous || null;
     if (previous) {
       const email = user.email || '';
       const displayName = (user.displayName || 'Novo diretor').slice(0,120);
@@ -10,7 +12,12 @@ export async function ensureAccessProfile(sdk, db, user) {
       return;
     }
     tx.set(ref, {role:'pending', team:'', displayName:(user.displayName || 'Novo diretor').slice(0,120), email:user.email || '', createdAt:sdk.serverTimestamp()});
-  });
+  }); } catch (error) {
+    // Regras antigas podem permitir ler o acesso, mas impedir atualizar o e-mail.
+    // Essa atualização opcional não deve bloquear uma conta já autorizada.
+    if (error.code === 'permission-denied' && existingProfile) return {metadataSyncPending:true};
+    throw error;
+  }
 }
 export function createFirebaseApi(sdk, db, auth) {
   const { doc, collection, runTransaction, serverTimestamp } = sdk;

@@ -39,3 +39,9 @@ Toda alteração de jogador usa transação e exige um registro de histórico na
 ## Verificação
 
 `npm test` verifica identidade, limite de times e transferência. Antes de liberar aos diretores, confira com contas reais: cadastro no próprio time, bloqueio de outro time, segunda e terceira inscrições, cadastro simultâneo e transferência com janela fechada/aberta. Checagem de compilação das regras não substitui esses testes de acesso.
+
+## Aparência e login
+
+O botão Claro/Escuro acompanha o tema do sistema até você escolher uma preferência; a escolha fica salva neste navegador. A logo vetorial está em `public/logo.svg`. Em telas pequenas, jogadores aparecem em cartões com os times e ações.
+
+Se o login mostrar erro de permissão, publique as regras atuais: `npm.cmd install`, `npm.cmd run firebase:login` e `npm.cmd run deploy:rules`. Contas existentes continuam entrando se somente a atualização opcional de nome/e-mail for bloqueada por regras antigas. O primeiro acesso ainda depende das regras corretas para criar o pedido pendente.

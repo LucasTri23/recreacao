@@ -43,6 +43,14 @@ test('login atualiza e-mail de conta antiga preservando permissão e time', asyn
   assert.deepEqual(records.get('users/director'),{role:'director',team:'VERDE',displayName:'João',email:'joao@gmail.com'});
 });
 
+test('regras antigas não bloqueiam login quando apenas a atualização de perfil é negada', async () => {
+  const {sdk} = setup({role:'admin'});
+  const run = sdk.runTransaction;
+  sdk.runTransaction = (_,callback) => run(_,tx => callback({...tx,set:() => { throw Object.assign(new Error('Denied'),{code:'permission-denied'}); }}));
+  assert.deepEqual(await ensureAccessProfile(sdk,{}, {uid:'director',email:'admin@gmail.com'}),{metadataSyncPending:true});
+  await assert.rejects(ensureAccessProfile(sdk,{}, {uid:'new',email:'new@gmail.com'}),{code:'permission-denied'});
+});
+
 test('administrador inscreve em qualquer time e adiciona segundo time com janela fechada', async () => {
   const {api,records} = setup({role:'admin'}, {'settings/transfers':{open:false}});
   const {TEAMS} = await import('../public/domain.js');
