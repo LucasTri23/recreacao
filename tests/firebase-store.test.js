@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {createFirebaseApi} from '../public/firebase-store.js';
+import {createFirebaseApi,ensureAccessProfile} from '../public/firebase-store.js';
 import {playerId} from '../public/domain.js';
 
 function setup(profile, seed = {}) {
@@ -16,7 +16,7 @@ function setup(profile, seed = {}) {
       writes.forEach(([key,value]) => records.set(key,value));
     }
   };
-  return {api:createFirebaseApi(sdk, {}, {currentUser:{uid:'director'}}), records};
+  return {api:createFirebaseApi(sdk, {}, {currentUser:{uid:'director'}}), records, sdk};
 }
 test('inscrição persiste jogador e histórico juntos e rejeita outro time', async () => {
   const {api,records} = setup({role:'director',team:'VERDE'});
@@ -27,6 +27,33 @@ test('inscrição persiste jogador e histórico juntos e rejeita outro time', as
   const player = records.get(`players/${id}`);
   assert.deepEqual(player.teams,['VERDE']);
   assert.equal(records.get(`events/${player.lastEvent}`).playerId,id);
+});
+test('primeiro login solicita acesso sem escolher time ou se promover', async () => {
+  const {sdk,records} = setup({role:'admin'});
+  await ensureAccessProfile(sdk,{}, {uid:'new',displayName:'Diretor novo',email:'diretor@example.com'});
+  assert.equal(records.get('users/new').role,'pending');
+  assert.equal(records.get('users/new').team,'');
+  await ensureAccessProfile(sdk,{}, {uid:'director',displayName:'Admin',email:'admin@example.com'});
+  assert.equal(records.get('users/director').role,'admin');
+});
+test('administrador vincula, troca o time e suspende acesso preservando identidade', async () => {
+  const {api,records} = setup({role:'admin'}, {'users/new':{role:'pending',team:'',email:'diretor@example.com',displayName:'Diretor'}});
+  await api('assignDirector',{uid:'new',team:'VERDE'});
+  assert.equal(records.get('users/new').role,'director');
+  assert.equal(records.get('users/new').team,'VERDE');
+  await api('assignDirector',{uid:'new',team:'BRANCO'});
+  assert.equal(records.get('users/new').team,'BRANCO');
+  await api('assignDirector',{uid:'new',team:''});
+  assert.equal(records.get('users/new').role,'pending');
+  assert.equal(records.get('users/new').email,'diretor@example.com');
+});
+test('diretor não vincula acessos e admin não altera administradores', async () => {
+  const director = setup({role:'director',team:'VERDE'}, {'users/new':{role:'pending',team:''}});
+  await assert.rejects(director.api('assignDirector',{uid:'new',team:'BRANCO'}),/administração/);
+  const admin = setup({role:'admin'}, {'users/other':{role:'admin'}});
+  await assert.rejects(admin.api('assignDirector',{uid:'director',team:'BRANCO'}),/inválida/);
+  await assert.rejects(admin.api('assignDirector',{uid:'other',team:'BRANCO'}),/administração/);
+  await assert.rejects(admin.api('assignDirector',{uid:'missing',team:'BRANCO'}),/uma vez/);
 });
 test('terceira inscrição e janela fechada não geram histórico ou alteração', async () => {
   const id = await playerId('João Silva','Centro');

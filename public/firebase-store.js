@@ -1,4 +1,11 @@
 import { TEAMS, membership, playerId } from './domain.js';
+export async function ensureAccessProfile(sdk, db, user) {
+  const ref = sdk.doc(db, 'users', user.uid);
+  await sdk.runTransaction(db, async tx => {
+    if ((await tx.get(ref)).data()) return;
+    tx.set(ref, {role:'pending', team:'', displayName:(user.displayName || 'Novo diretor').slice(0,120), email:user.email || '', createdAt:sdk.serverTimestamp()});
+  });
+}
 export function createFirebaseApi(sdk, db, auth) {
   const { doc, collection, runTransaction, serverTimestamp } = sdk;
   return async (action, data) => {
@@ -12,6 +19,17 @@ export function createFirebaseApi(sdk, db, auth) {
         if (!['admin','director'].includes(profile?.role)) throw Error('Conta sem autorização.');
         const allowed = team => profile.role === 'admin' || profile.team === team;
         const event = { actor:uid, at:serverTimestamp() };
+        if (action === 'assignDirector') {
+          if (profile.role !== 'admin') throw Error('Apenas a administração pode vincular acessos.');
+          if (typeof data.uid !== 'string' || !data.uid || data.uid.includes('/') || data.uid === uid) throw Error('Conta inválida.');
+          if (data.team !== '' && !TEAMS.includes(data.team)) throw Error('Time inválido.');
+          const ref = doc(db,'users',data.uid);
+          const target = (await tx.get(ref)).data();
+          if (!target) throw Error('A pessoa precisa entrar no site uma vez.');
+          if (target.role === 'admin') throw Error('Esta conta é de administração.');
+          tx.set(ref, {...target, role:data.team ? 'director' : 'pending', team:data.team, updatedAt:serverTimestamp()});
+          return;
+        }
         if (action === 'setWindow') {
           if (profile.role !== 'admin') throw Error('Apenas a administração pode alterar a janela.');
           if (typeof data.open !== 'boolean') throw Error('Estado inválido.');

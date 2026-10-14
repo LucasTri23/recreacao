@@ -4,6 +4,48 @@ const $ = s => document.querySelector(s);
 const palette = [['#c5c9b8','#f0f1e9','#68705a'],['#343c39','#e9ece8','#404b41'],['#648dc5','#ebf1fa','#5075aa'],['#a18270','#f4ede7','#8b6a54'],['#899b86','#ebf0e7','#667d5e'],['#d4b94e','#faf5dc','#99852c'],['#d99459','#fcf0e2','#b47d42'],['#71a08b','#eaf3ec','#5b8b6b']];
 let players = [], logs = [], windowOpen = false, profile = null, user = null, api = null, filter = 'all', transferring = null;
 const demo = !firebaseConfig;
+let accessUsers = [];
+const accessButton = element('button', '⚙ Gerenciar acessos');
+accessButton.hidden = true;
+document.querySelector('nav').append(accessButton);
+const accessDialog = element('dialog');
+accessDialog.id = 'access-dialog';
+const accessTitle = element('div', null, 'dialog-title');
+const accessClose = element('button', '×', 'close');
+accessClose.setAttribute('aria-label','Fechar');
+accessClose.onclick = () => accessDialog.close();
+accessTitle.append(element('h2','Diretores e acessos'),accessClose);
+const accessList = element('div');
+accessDialog.append(accessTitle,element('p','Escolha o time de cada diretor. Quem ainda não apareceu precisa entrar no site com Google uma vez.'),accessList);
+document.body.append(accessDialog);
+accessButton.onclick = () => { renderAccess(); accessDialog.showModal(); };
+function renderAccess() {
+  accessList.replaceChildren();
+  if (!accessUsers.length) accessList.append(element('p','Nenhuma conta encontrada.'));
+  const sorted = [...accessUsers].sort((a,b) => (a.role === 'pending' ? 0 : 1) - (b.role === 'pending' ? 0 : 1) || (a.displayName || a.email || '').localeCompare(b.displayName || b.email || '','pt-BR'));
+  for (const account of sorted) {
+    const item = element('div',null,'access-item');
+    item.append(element('strong',account.displayName || account.email || 'Conta cadastrada'),element('small',account.email || `Identificação: ${account.id}`));
+    if (account.role === 'admin') item.append(element('p','Administrador'));
+    else {
+      const form = element('form',null,'access-controls');
+      const select = element('select');
+      select.setAttribute('aria-label',`Time de ${account.displayName || account.email || account.id}`);
+      options(select,['',...TEAMS]); select.options[0].textContent = 'Sem acesso · aguardando liberação'; select.value = account.team || '';
+      const save = element('button','Salvar','primary');
+      const feedback = element('p',null,'access-feedback'); feedback.setAttribute('role','status');
+      form.append(select,save);
+      form.onsubmit = async event => {
+        event.preventDefault(); save.disabled = true; select.disabled = true; feedback.textContent = '';
+        try { await api('assignDirector',{uid:account.id,team:select.value}); toast('Acesso atualizado. O diretor recebe a mudança automaticamente.'); }
+        catch(e) { feedback.textContent = e.message; }
+        finally { save.disabled = false; select.disabled = false; }
+      };
+      item.append(form,feedback);
+    }
+    accessList.append(item);
+  }
+}
 const style = team => { const c = palette[TEAMS.indexOf(team)] || palette[0]; return `--team:${c[0]};--soft:${c[1]};--ink:${c[2]}`; };
 function element(tag, text, className) { const e = document.createElement(tag); if (text != null) e.textContent = text; if (className) e.className = className; return e; }
 function toast(message) { $('#toast').textContent = message; $('#toast').style.display = 'block'; clearTimeout(toast.timer); toast.timer = setTimeout(() => $('#toast').style.display = 'none', 4500); }
@@ -13,6 +55,8 @@ function render() {
   $('#player-count').textContent = players.length;
   $('#window-label').textContent = windowOpen ? 'Janela aberta' : 'Janela fechada';
   $('#window-toggle').hidden = !(demo || profile?.role === 'admin');
+  accessButton.hidden = profile?.role !== 'admin';
+  if (profile?.role !== 'admin' && accessDialog.open) accessDialog.close();
   $('#login').textContent = demo ? 'Modo demonstração' : user ? `${profile?.role === 'admin' ? 'Administração' : profile?.team || 'Sem acesso atribuído'} · Sair` : 'Entrar como diretor ↗';
   $('#team-grid').replaceChildren(...TEAMS.map((team, i) => {
     const count = players.filter(p => p.teams.includes(team)).length;
@@ -102,21 +146,39 @@ if (demo) {
     const base = 'https://www.gstatic.com/firebasejs/12.4.0/';
     const [appSDK, authSDK, dbSDK] = await Promise.all(['firebase-app.js','firebase-auth.js','firebase-firestore.js'].map(p => import(base + p)));
     const app = appSDK.initializeApp(firebaseConfig), auth = authSDK.getAuth(app), db = dbSDK.getFirestore(app);
-    const { createFirebaseApi } = await import('./firebase-store.js');
+    const { createFirebaseApi, ensureAccessProfile } = await import('./firebase-store.js');
     api = createFirebaseApi(dbSDK, db, auth);
     $('#login').onclick = async () => { try { if (auth.currentUser) await authSDK.signOut(auth); else await authSDK.signInWithPopup(auth, new authSDK.GoogleAuthProvider()); } catch(e) { toast(e.message); } };
-    let unsubscribers = [];
+    let unsubscribers = [], dataSubscriptions = [], authVersion = 0;
     authSDK.onAuthStateChanged(auth, async current => {
-      unsubscribers.forEach(u => u()); unsubscribers = []; user = current; profile = null; players = []; logs = []; windowOpen = false; render();
+      const version = ++authVersion;
+      unsubscribers.forEach(u => u()); unsubscribers = [];
+      dataSubscriptions.forEach(u => u()); dataSubscriptions = [];
+      user = current; profile = null; players = []; logs = []; accessUsers = []; windowOpen = false; render();
       if (!current) { $('#mode-notice').textContent = 'Entre com sua conta de diretor para acessar os jogadores.'; return; }
       try {
-        const snap = await dbSDK.getDoc(dbSDK.doc(db, 'users', current.uid)); profile = snap.data();
-        if (!['admin','director'].includes(profile?.role)) { $('#mode-notice').textContent = 'Sua conta aguarda liberação pela administração.'; render(); return; }
-        $('#mode-notice').textContent = profile.role === 'admin' ? 'Administração · Gerencie os times e a janela de transferências.' : `Diretor · ${profile.team}. Você pode cadastrar e transferir jogadores do seu time.`;
+        await ensureAccessProfile(dbSDK,db,current);
+        if (version !== authVersion) return;
         const error = e => toast('Não foi possível sincronizar: ' + e.message);
-        unsubscribers.push(dbSDK.onSnapshot(dbSDK.collection(db,'players'), s => { players = s.docs.map(d => ({...d.data(), id:d.id})); render(); }, error));
-        unsubscribers.push(dbSDK.onSnapshot(dbSDK.doc(db,'settings','transfers'), s => { windowOpen = s.data()?.open === true; render(); }, error));
-        unsubscribers.push(dbSDK.onSnapshot(dbSDK.query(dbSDK.collection(db,'events'),dbSDK.orderBy('at','desc'),dbSDK.limit(100)), s => { logs = s.docs.map(d => d.data()); }, error)); render();
+        unsubscribers.push(dbSDK.onSnapshot(dbSDK.doc(db,'users',current.uid), snap => {
+          if (version !== authVersion) return;
+          dataSubscriptions.forEach(u => u()); dataSubscriptions = [];
+          profile = snap.data(); players = []; logs = []; accessUsers = []; windowOpen = false;
+          if (!['admin','director'].includes(profile?.role)) {
+            $('#mode-notice').textContent = 'Seu pedido de acesso foi enviado. Aguarde o administrador vincular sua conta a um time; esta tela será atualizada automaticamente.';
+            render(); return;
+          }
+          $('#mode-notice').textContent = profile.role === 'admin' ? 'Administração · Use Gerenciar acessos para liberar diretores e escolher seus times.' : `Diretor · ${profile.team}. Você pode cadastrar e transferir jogadores do seu time.`;
+          const active = callback => value => { if (version === authVersion && ['admin','director'].includes(profile?.role)) callback(value); };
+          dataSubscriptions.push(dbSDK.onSnapshot(dbSDK.collection(db,'players'), active(s => { players = s.docs.map(d => ({...d.data(), id:d.id})); render(); }), error));
+          dataSubscriptions.push(dbSDK.onSnapshot(dbSDK.doc(db,'settings','transfers'), active(s => { windowOpen = s.data()?.open === true; render(); }), error));
+          dataSubscriptions.push(dbSDK.onSnapshot(dbSDK.query(dbSDK.collection(db,'events'),dbSDK.orderBy('at','desc'),dbSDK.limit(100)), active(s => { logs = s.docs.map(d => d.data()); }), error));
+          if (profile.role === 'admin') dataSubscriptions.push(dbSDK.onSnapshot(dbSDK.collection(db,'users'), s => {
+            if (version !== authVersion || profile?.role !== 'admin') return;
+            accessUsers = s.docs.map(d => ({...d.data(),id:d.id})); renderAccess();
+          },error));
+          render();
+        },error));
       } catch(e) { toast(e.message); }
     });
   } catch(e) { $('#mode-notice').textContent = 'Falha ao conectar ao Firebase. Verifique a configuração e a conexão.'; }

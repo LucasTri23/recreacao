@@ -44,8 +44,23 @@ service cloud.firestore {
         && playerEvent(id, p, 'transfer', removed[0], added[0]);
     }
     match /users/{uid} {
-      allow get: if request.auth != null && request.auth.uid == uid;
-      allow list, write: if false;
+      allow get: if request.auth != null && (request.auth.uid == uid || admin());
+      allow list: if admin();
+      allow create: if request.auth != null && request.auth.uid == uid
+        && request.auth.token.email_verified == true
+        && request.resource.data.keys().hasAll(['role','team','displayName','email','createdAt'])
+        && request.resource.data.keys().hasOnly(['role','team','displayName','email','createdAt'])
+        && request.resource.data.role == 'pending' && request.resource.data.team == ''
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.displayName is string && request.resource.data.displayName.size() <= 120
+        && request.resource.data.createdAt == request.time;
+      allow update: if admin() && request.auth.uid != uid && resource.data.role != 'admin'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role','team','updatedAt'])
+        && request.resource.data.updatedAt == request.time
+        && ((request.resource.data.role == 'pending' && request.resource.data.team == '')
+          || (request.resource.data.role == 'director' && request.resource.data.team in
+            ['BRANCO','PRETO','BLUES','COIOTES','VETOR NORTE','AMARELO','LARANJA','VERDE']));
+      allow delete: if false;
     }
     match /players/{id} {
       allow read: if member();
