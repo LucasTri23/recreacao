@@ -106,3 +106,44 @@ test('transferência preserva segunda inscrição e só admin abre janela', asyn
   assert.deepEqual(records.get(`players/${id}`).teams,['BLUES','VERDE']);
   assert.equal(records.get(`events/${records.get(`players/${id}`).lastEvent}`).from,'BRANCO');
 });
+
+async function mergeFixture(profile = {role:'admin'}, sourceTeams = ['VERDE'], targetTeams = ['BRANCO']) {
+  const sourceId = await playerId('Joao Silva','Centro'), targetId = await playerId('João da Silva','Centro');
+  const seed = {
+    [`players/${sourceId}`]:{name:'Joao Silva',congregation:'Centro',teams:sourceTeams,lastEvent:'old-source'},
+    [`players/${targetId}`]:{name:'João da Silva',congregation:'Centro',teams:targetTeams,lastEvent:'old-target'},
+    'events/old-source':{name:'Joao Silva',kind:'add'},'events/old-target':{name:'João da Silva',kind:'add'}
+  };
+  return {...setup(profile,seed),sourceId,targetId};
+}
+test('admin unifica atomicamente, preserva histórico e impede terceiro time pelo nome antigo', async () => {
+  const {api,records,sourceId,targetId} = await mergeFixture();
+  await api('mergePlayers',{sourceId,targetId});
+  const source = records.get(`players/${sourceId}`), target = records.get(`players/${targetId}`);
+  assert.equal(source.mergedInto,targetId); assert.deepEqual(source.teams,[]);
+  assert.deepEqual(target.teams,['BRANCO','VERDE']); assert.equal(source.lastEvent,target.lastEvent);
+  const event = records.get(`events/${target.lastEvent}`);
+  assert.equal(event.kind,'merge'); assert.deepEqual(event.sourceTeams,['VERDE']); assert.deepEqual(event.targetTeams,['BRANCO']);
+  assert.ok(records.has('events/old-source')); assert.ok(records.has('events/old-target'));
+  await assert.rejects(api('addPlayer',{name:'Joao Silva',congregation:'Centro',team:'BLUES'}),/dois times/);
+  await assert.rejects(api('mergePlayers',{sourceId,targetId}),/já unificado/);
+});
+test('unificação rejeita diretor, mesmo cadastro, cadastro ausente e união acima do limite sem gravar', async () => {
+  const director = await mergeFixture({role:'director',team:'VERDE'});
+  await assert.rejects(director.api('mergePlayers',director),/administração/);
+  const fixture = await mergeFixture({role:'admin'},['VERDE','BLUES'],['BRANCO']);
+  const before = JSON.stringify([...fixture.records]);
+  await assert.rejects(fixture.api('mergePlayers',fixture),/mais de dois/);
+  await assert.rejects(fixture.api('mergePlayers',{sourceId:fixture.sourceId,targetId:fixture.sourceId}),/diferentes/);
+  await assert.rejects(fixture.api('mergePlayers',{sourceId:fixture.sourceId,targetId:'a'.repeat(64)}),/alterado/);
+  assert.equal(JSON.stringify([...fixture.records]),before);
+});
+test('inscrição pelo cadastro antigo redireciona para o mantido e registra o id correto', async () => {
+  const {api,records,sourceId,targetId} = await mergeFixture({role:'admin'},['VERDE'],['VERDE']);
+  await api('mergePlayers',{sourceId,targetId});
+  await api('addPlayer',{name:'Joao Silva',congregation:'Centro',team:'BLUES'});
+  const target = records.get(`players/${targetId}`);
+  assert.deepEqual(target.teams,['VERDE','BLUES']);
+  assert.equal(records.get(`events/${target.lastEvent}`).playerId,targetId);
+  assert.deepEqual(records.get(`players/${sourceId}`).teams,[]);
+});

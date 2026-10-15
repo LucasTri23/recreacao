@@ -45,3 +45,11 @@ Toda alteração de jogador usa transação e exige um registro de histórico na
 O botão Claro/Escuro acompanha o tema do sistema até você escolher uma preferência; a escolha fica salva neste navegador. A logo vetorial está em `public/logo.svg`. Em telas pequenas, jogadores aparecem em cartões com os times e ações.
 
 Se o login mostrar erro de permissão, publique as regras atuais: `npm.cmd install`, `npm.cmd run firebase:login` e `npm.cmd run deploy:rules`. Contas existentes continuam entrando se somente a atualização opcional de nome/e-mail for bloqueada por regras antigas. O primeiro acesso ainda depende das regras corretas para criar o pedido pendente.
+
+## Evitar cadastros duplicados
+
+Ao digitar pelo menos três letras do nome em **Adicionar jogador**, aparecem nomes parecidos com congregação e times atuais. Escolha **É a mesma pessoa · usar cadastro** para aproveitar a inscrição existente. Se for outra pessoa, confira as sugestões e marque a confirmação antes de salvar. Os alertas ajudam na revisão; nomes parecidos não comprovam que seja a mesma pessoa.
+
+Administradores têm o botão **Revisar duplicidades**. Abra um par, confira as duas identidades e escolha qual cadastro manter. A confirmação unifica os times em uma transação e registra a operação no histórico. Se a união superar dois times, regularize as inscrições antes: a unificação não descarta times automaticamente.
+
+O cadastro antigo fica arquivado, com referência ao mantido. Não conta mais como jogador ativo; inscrições futuras com a identidade antiga são redirecionadas ao cadastro mantido, respeitando o limite de dois times. O histórico anterior permanece preservado. Apenas administradores podem unificar; as regras verificam os dois cadastros e o histórico na mesma operação. Publique `firestore.rules` junto desta atualização.

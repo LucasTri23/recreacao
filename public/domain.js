@@ -18,3 +18,43 @@ export async function playerId(name, congregation) {
   const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(identity(name, congregation)));
   return Array.from(new Uint8Array(bytes), x => x.toString(16).padStart(2, '0')).join('');
 }
+
+const normalizedName = value => identity(value, '').slice(0,-1);
+export function similarity(a, b) {
+  a = normalizedName(a); b = normalizedName(b);
+  if (!a || !b) return 0;
+  if (a === b) return 1;
+  const words = value => value.split(' ').filter(w => !['de','da','do','das','dos','e'].includes(w));
+  const left = words(a), right = words(b);
+  const shared = left.filter(w => right.includes(w)).length;
+  let row = Array.from({length:b.length + 1}, (_,i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const next = [i];
+    for (let j = 1; j <= b.length; j++) next[j] = Math.min(next[j-1]+1,row[j]+1,row[j-1]+(a[i-1] === b[j-1] ? 0 : 1));
+    row = next;
+  }
+  const edit = 1 - row[b.length] / Math.max(a.length,b.length);
+  return Math.max(edit, shared >= 2 ? 2 * shared / (left.length + right.length) : 0);
+}
+export function playerSuggestions(players, name, congregation = '') {
+  const query = normalizedName(name);
+  if (query.length < 3) return [];
+  return players.filter(p => !p.mergedInto).map(player => {
+    const candidate = normalizedName(player.name);
+    const score = candidate.includes(query) ? Math.max(.85, similarity(name,player.name)) : similarity(name,player.name);
+    return {player,score,sameCongregation:!!congregation && normalizedName(congregation) === normalizedName(player.congregation)};
+  }).filter(item => item.score >= .72).sort((a,b) => b.score - a.score || Number(b.sameCongregation) - Number(a.sameCongregation) || a.player.name.localeCompare(b.player.name,'pt-BR'));
+}
+export function duplicatePairs(players) {
+  const active = players.filter(p => !p.mergedInto), pairs = [];
+  for (let i = 0; i < active.length; i++) for (let j = i+1; j < active.length; j++) {
+    const score = similarity(active[i].name,active[j].name);
+    if (score >= .72) pairs.push({source:active[i],target:active[j],score});
+  }
+  return pairs.sort((a,b) => b.score-a.score);
+}
+export function mergedTeams(source, target) {
+  const teams = [...new Set([...target.teams,...source.teams])];
+  if (teams.length > 2) throw Error('Esses cadastros somam mais de dois times. Regularize as inscrições antes de unificar.');
+  return teams;
+}

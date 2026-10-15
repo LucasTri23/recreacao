@@ -17,7 +17,7 @@ service cloud.firestore {
         && p.name is string && p.name.size() >= 3 && p.name.size() <= 120
         && p.congregation is string && p.congregation.size() >= 2 && p.congregation.size() <= 120
         && !p.name.matches('.*[|].*') && !p.congregation.matches('.*[|].*')
-        && id == hashing.sha256(normalized(p.name) + '|' + normalized(p.congregation)).toHexString()
+        && id == hashing.sha256(normalized(p.name) + '|' + normalized(p.congregation)).toHexString().lower()
         && p.teams is list && p.teams.size() >= 1 && p.teams.size() <= 2
         && p.teams.toSet().size() == p.teams.size()
         && p.teams.toSet().hasOnly(['BRANCO','PRETO','BLUES','COIOTES','VETOR NORTE','AMARELO','LARANJA','VERDE'])
@@ -42,6 +42,28 @@ service cloud.firestore {
         && manages(removed[0])
         && get(/databases/$(database)/documents/settings/transfers).data.open == true
         && playerEvent(id, p, 'transfer', removed[0], added[0]);
+    }
+    function validMerge(eventId) {
+      let e = getAfter(/databases/$(database)/documents/events/$(eventId)).data;
+      let source = get(/databases/$(database)/documents/players/$(e.sourceId)).data;
+      let target = get(/databases/$(database)/documents/players/$(e.targetId)).data;
+      let afterSource = getAfter(/databases/$(database)/documents/players/$(e.sourceId)).data;
+      let afterTarget = getAfter(/databases/$(database)/documents/players/$(e.targetId)).data;
+      return admin() && e.kind == 'merge' && e.actor == request.auth.uid && e.at == request.time
+        && e.keys().hasOnly(['actor','at','kind','sourceId','targetId','name','sourceName','sourceCongregation','targetCongregation','sourceTeams','targetTeams','teams','detail'])
+        && e.sourceId != e.targetId && !('mergedInto' in source) && !('mergedInto' in target)
+        && e.name == target.name && e.sourceName == source.name
+        && e.sourceCongregation == source.congregation && e.targetCongregation == target.congregation
+        && e.sourceTeams == source.teams && e.targetTeams == target.teams
+        && e.teams == afterTarget.teams && e.teams.toSet() == source.teams.toSet().union(target.teams.toSet())
+        && validPlayer(e.targetId, afterTarget)
+        && afterSource.diff(source).affectedKeys().hasOnly(['teams','mergedInto','updatedAt','lastEvent'])
+        && afterTarget.diff(target).affectedKeys().hasOnly(['teams','updatedAt','lastEvent'])
+        && afterSource.teams == [] && afterSource.mergedInto == e.targetId
+        && afterSource.lastEvent == eventId && afterTarget.lastEvent == eventId
+        && source.lastEvent != eventId && target.lastEvent != eventId
+        && afterSource.updatedAt == request.time && afterTarget.updatedAt == request.time
+        && e.detail is string && e.detail.size() <= 1000;
     }
     match /users/{uid} {
       allow get: if request.auth != null && (request.auth.uid == uid || admin());
@@ -72,10 +94,13 @@ service cloud.firestore {
       allow create: if member() && validPlayer(id, request.resource.data)
         && request.resource.data.teams.size() == 1 && manages(request.resource.data.teams[0])
         && playerEvent(id, request.resource.data, 'add', '', request.resource.data.teams[0]);
-      allow update: if member() && validPlayer(id, request.resource.data)
+      allow update: if member() && !('mergedInto' in resource.data) && validPlayer(id, request.resource.data)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['teams','updatedAt','lastEvent'])
         && request.resource.data.lastEvent != resource.data.lastEvent
         && (addition(id, resource.data, request.resource.data) || transfer(id, resource.data, request.resource.data));
+      allow update: if admin() && validMerge(request.resource.data.lastEvent)
+        && (id == getAfter(/databases/$(database)/documents/events/$(request.resource.data.lastEvent)).data.sourceId
+          || id == getAfter(/databases/$(database)/documents/events/$(request.resource.data.lastEvent)).data.targetId);
       allow delete: if false;
     }
     match /settings/transfers {
@@ -93,6 +118,8 @@ service cloud.firestore {
       allow read: if member();
       allow create: if member() && request.resource.data.actor == request.auth.uid
         && request.resource.data.at == request.time && (
+          (request.resource.data.kind == 'merge' && validMerge(id))
+          ||
           (request.resource.data.kind in ['add','transfer']
             && request.resource.data.keys().hasOnly(['actor','at','kind','playerId','name','from','to','detail'])
             && getAfter(/databases/$(database)/documents/players/$(request.resource.data.playerId)).data.lastEvent == id

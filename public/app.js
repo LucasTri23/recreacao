@@ -1,10 +1,13 @@
 import { firebaseConfig } from './firebase-config.js';
-import { TEAMS, identity, membership, playerId } from './domain.js';
+import { TEAMS, identity, membership, playerId, mergedTeams } from './domain.js';
+import { setupDuplicates } from './duplicates.js';
 const $ = s => document.querySelector(s);
 const palette = [['#c5c9b8','#f0f1e9','#68705a'],['#343c39','#e9ece8','#404b41'],['#648dc5','#ebf1fa','#5075aa'],['#a18270','#f4ede7','#8b6a54'],['#899b86','#ebf0e7','#667d5e'],['#d4b94e','#faf5dc','#99852c'],['#d99459','#fcf0e2','#b47d42'],['#71a08b','#eaf3ec','#5b8b6b']];
 let players = [], logs = [], windowOpen = false, profile = null, user = null, api = null, filter = 'all', transferring = null;
 const demo = !firebaseConfig;
 let accessUsers = [];
+let archivedPlayers = [];
+const duplicates = setupDuplicates({element,getPlayers:() => players,isAdmin:() => demo || profile?.role === 'admin',openAdd,mutate,toast});
 const accessButton = element('button', '⚙ Gerenciar acessos');
 accessButton.hidden = true;
 document.querySelector('nav').append(accessButton);
@@ -76,6 +79,7 @@ function render() {
   }));
   $('#congregations').replaceChildren(...[...new Set(players.map(p => p.congregation))].sort().map(c => { const o = element('option'); o.value = c; return o; }));
   renderPlayers();
+  duplicates.refresh();
 }
 function renderPlayers() {
   const search = identity($('#search').value, '');
@@ -108,19 +112,33 @@ function openAdd(player = null) {
   }
   if (teams.includes($('#team-filter').value)) $('#player-form select').value = $('#team-filter').value;
   $('#player-dialog').showModal();
+  duplicates.suggest();
 }
 function openTransfer(p) {
   transferring = p.id; $('#transfer-form .form-error').textContent = ''; $('#transfer-name').textContent = `${p.name} · ${p.congregation}`;
   options($('#transfer-form [name=from]'), p.teams.filter(allowed)); options($('#transfer-form [name=to]'), TEAMS.filter(t => !p.teams.includes(t))); $('#transfer-dialog').showModal();
 }
-function saveDemo() { localStorage.setItem('recreacao-demo-v1', JSON.stringify({ players, logs, windowOpen })); render(); }
+function saveDemo() { localStorage.setItem('recreacao-demo-v1', JSON.stringify({ players, archivedPlayers, logs, windowOpen })); render(); }
 async function mutate(action, data) {
   if (!demo) { await api(action, data); return; }
   if (action === 'setWindow') { windowOpen = data.open; logs.unshift({ name:'Janela de transferências', detail: windowOpen ? 'Aberta pela administração' : 'Fechada pela administração', at: Date.now() }); }
   if (action === 'addPlayer') {
-    const id = await playerId(data.name, data.congregation); const p = players.find(p => p.id === id);
+    let id = await playerId(data.name, data.congregation);
+    const visited = new Set();
+    while (archivedPlayers.some(p => p.id === id)) {
+      if (visited.has(id)) throw Error('Vínculo de cadastro inválido.');
+      visited.add(id); id = archivedPlayers.find(p => p.id === id).mergedInto;
+    }
+    const p = players.find(p => p.id === id);
     if (p) p.teams = membership(p, data.team); else players.push({ id, name:data.name.trim().replace(/\s+/g,' '), congregation:data.congregation.trim().replace(/\s+/g,' '), teams:[data.team] });
     logs.unshift({ name:data.name, detail:`Inscrição em ${data.team}`, at:Date.now() });
+  }
+  if (action === 'mergePlayers') {
+    const source = players.find(p => p.id === data.sourceId), target = players.find(p => p.id === data.targetId);
+    if (!source || !target || source === target) throw Error('Escolha dois cadastros diferentes e ativos.');
+    const teams = mergedTeams(source,target);
+    logs.unshift({name:target.name,detail:`Cadastro de ${source.name} (${source.congregation}) unificado com ${target.name} (${target.congregation}). Times: ${teams.join(', ')}.`,at:Date.now()});
+    target.teams = teams; archivedPlayers.push({...source,teams:[],mergedInto:target.id}); players = players.filter(p => p.id !== source.id);
   }
   if (action === 'transferPlayer') {
     if (!windowOpen) throw Error('A janela de transferências está fechada.');
@@ -137,7 +155,7 @@ document.querySelectorAll('[data-filter]').forEach(b => b.onclick = () => { filt
 function submit(form, action, getData, dialog, success) {
   $(form).onsubmit = async event => {
     event.preventDefault(); const button = $(form + ' .submit'); button.disabled = true; $(form + ' .form-error').textContent = '';
-    try { await mutate(action, getData(new FormData(event.target))); $(dialog).close(); toast(success); }
+    try { if (form === '#player-form') duplicates.validate(); await mutate(action, getData(new FormData(event.target))); $(dialog).close(); toast(success); }
     catch(e) { $(form + ' .form-error').textContent = e.message; } finally { button.disabled = false; }
   };
 }
@@ -150,7 +168,7 @@ $('#history-button').onclick = () => {
   $('#history-dialog').showModal();
 };
 if (demo) {
-  try { const stored = JSON.parse(localStorage.getItem('recreacao-demo-v1')); if (stored) ({ players, logs, windowOpen } = stored); } catch { localStorage.removeItem('recreacao-demo-v1'); }
+  try { const stored = JSON.parse(localStorage.getItem('recreacao-demo-v1')); if (stored) { ({ players, logs, windowOpen } = stored); archivedPlayers = stored.archivedPlayers || []; } } catch { localStorage.removeItem('recreacao-demo-v1'); }
   $('#mode-notice').textContent = 'Demonstração local · Experimente os cadastros e transferências. Os dados ficam apenas neste navegador até conectar o Firebase.';
   $('#login').onclick = () => toast('Conecte o Firebase para habilitar o acesso dos diretores.'); render();
 } else {
@@ -185,7 +203,7 @@ if (demo) {
           }
           $('#mode-notice').textContent = profile.role === 'admin' ? 'Administração · Use Gerenciar acessos para liberar diretores e escolher seus times.' : `Diretor · ${profile.team}. Você pode cadastrar e transferir jogadores do seu time.`;
           const active = callback => value => { if (version === authVersion && ['admin','director'].includes(profile?.role)) callback(value); };
-          dataSubscriptions.push(dbSDK.onSnapshot(dbSDK.collection(db,'players'), active(s => { players = s.docs.map(d => ({...d.data(), id:d.id})); render(); }), error));
+          dataSubscriptions.push(dbSDK.onSnapshot(dbSDK.collection(db,'players'), active(s => { players = s.docs.map(d => ({...d.data(), id:d.id})).filter(p => !p.mergedInto); render(); }), error));
           dataSubscriptions.push(dbSDK.onSnapshot(dbSDK.doc(db,'settings','transfers'), active(s => { windowOpen = s.data()?.open === true; render(); }), error));
           dataSubscriptions.push(dbSDK.onSnapshot(dbSDK.query(dbSDK.collection(db,'events'),dbSDK.orderBy('at','desc'),dbSDK.limit(100)), active(s => { logs = s.docs.map(d => d.data()); }), error));
           if (profile.role === 'admin') dataSubscriptions.push(dbSDK.onSnapshot(dbSDK.collection(db,'users'), s => {

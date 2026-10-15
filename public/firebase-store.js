@@ -1,4 +1,4 @@
-import { TEAMS, membership, playerId } from './domain.js';
+import { TEAMS, membership, playerId, mergedTeams } from './domain.js';
 export async function ensureAccessProfile(sdk, db, user) {
   const ref = sdk.doc(db, 'users', user.uid);
   let existingProfile = null;
@@ -32,6 +32,18 @@ export function createFirebaseApi(sdk, db, auth) {
         if (!['admin','director'].includes(profile?.role)) throw Error('Conta sem autorização.');
         const allowed = team => profile.role === 'admin' || profile.team === team;
         const event = { actor:uid, at:serverTimestamp() };
+        if (action === 'mergePlayers') {
+          if (profile.role !== 'admin') throw Error('Apenas a administração pode unificar cadastros.');
+          if (![data.sourceId,data.targetId].every(id => typeof id === 'string' && /^[a-f0-9]{64}$/.test(id)) || data.sourceId === data.targetId) throw Error('Escolha dois cadastros diferentes.');
+          const sourceRef = doc(db,'players',data.sourceId), targetRef = doc(db,'players',data.targetId);
+          const source = (await tx.get(sourceRef)).data(), target = (await tx.get(targetRef)).data();
+          if (!source || !target || source.mergedInto || target.mergedInto) throw Error('Cadastro alterado ou já unificado. Atualize a revisão.');
+          const teams = mergedTeams(source,target);
+          tx.set(sourceRef,{...source,teams:[],mergedInto:data.targetId,updatedAt:serverTimestamp(),lastEvent:eventRef.id});
+          tx.set(targetRef,{...target,teams,updatedAt:serverTimestamp(),lastEvent:eventRef.id});
+          tx.set(eventRef,{...event,kind:'merge',sourceId:data.sourceId,targetId:data.targetId,name:target.name,sourceName:source.name,sourceCongregation:source.congregation,targetCongregation:target.congregation,sourceTeams:source.teams,targetTeams:target.teams,teams,detail:`Cadastro de ${source.name} (${source.congregation}) unificado com ${target.name} (${target.congregation}). Times: ${teams.join(', ')}.`});
+          return;
+        }
         if (action === 'assignDirector') {
           if (profile.role !== 'admin') throw Error('Apenas a administração pode vincular acessos.');
           if (typeof data.uid !== 'string' || !data.uid || data.uid.includes('/') || data.uid === uid) throw Error('Conta inválida.');
@@ -50,8 +62,18 @@ export function createFirebaseApi(sdk, db, auth) {
           tx.set(eventRef, {...event, kind:'window', open:data.open, name:'Janela de transferências', detail:data.open ? 'Aberta pela administração' : 'Fechada pela administração'});
           return;
         }
-        const ref = doc(db, 'players', id);
-        const previous = (await tx.get(ref)).data();
+        let ref = doc(db, 'players', id);
+        let previous = (await tx.get(ref)).data();
+        let resolvedId = id;
+        if (action === 'addPlayer') {
+          const visited = new Set();
+          while (previous?.mergedInto) {
+            if (visited.has(resolvedId) || visited.size >= 20) throw Error('Vínculo de cadastro inválido. Procure a administração.');
+            visited.add(resolvedId); resolvedId = previous.mergedInto;
+            ref = doc(db,'players',resolvedId); previous = (await tx.get(ref)).data();
+            if (!previous) throw Error('Cadastro unificado não encontrado. Procure a administração.');
+          }
+        } else if (previous?.mergedInto) throw Error('Este cadastro foi unificado. Atualize a lista.');
         let next, from = '', to;
         if (action === 'addPlayer') {
           const name = data.name.trim().replace(/\s+/g,' '), congregation = data.congregation.trim().replace(/\s+/g,' ');
@@ -68,7 +90,7 @@ export function createFirebaseApi(sdk, db, auth) {
           next = {...previous, teams:membership(previous, from, to)};
         } else throw Error('Operação inválida.');
         tx.set(ref, {...next, updatedAt:serverTimestamp(), lastEvent:eventRef.id});
-        tx.set(eventRef, {...event, kind:from ? 'transfer' : 'add', playerId:id, name:next.name, from, to, detail:from ? `${from} → ${to}` : `Inscrição em ${to}`});
+        tx.set(eventRef, {...event, kind:from ? 'transfer' : 'add', playerId:resolvedId, name:next.name, from, to, detail:from ? `${from} → ${to}` : `Inscrição em ${to}`});
       });
     } catch(e) {
       if (e.code === 'permission-denied') throw Error('Operação não autorizada. Confira seu time, a janela e as regras publicadas.');
