@@ -2,6 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createFirebaseApi,ensureAccessProfile} from '../public/firebase-store.js';
 import {playerId} from '../public/domain.js';
+import {DEFAULT_TEAMS} from '../public/teams.js';
 
 function setup(profile, seed = {}) {
   const records = new Map(Object.entries({'users/director':profile, ...seed}));
@@ -146,4 +147,130 @@ test('inscrição pelo cadastro antigo redireciona para o mantido e registra o i
   assert.deepEqual(target.teams,['VERDE','BLUES']);
   assert.equal(records.get(`events/${target.lastEvent}`).playerId,targetId);
   assert.deepEqual(records.get(`players/${sourceId}`).teams,[]);
+});
+
+test('admin inativa, exclui e restaura preservando times e histórico e bloqueando inscrições', async () => {
+  const {api,records,sourceId} = await mergeFixture();
+  const before = records.get(`players/${sourceId}`);
+  for (const status of ['inactive','deleted']) {
+    await api('setPlayerStatus',{id:sourceId,status});
+    const p = records.get(`players/${sourceId}`);
+    assert.equal(p.status,status); assert.deepEqual(p.teams,before.teams);
+    assert.equal(records.get(`events/${p.lastEvent}`).kind,'status');
+    await assert.rejects(api('addPlayer',{name:before.name,congregation:before.congregation,team:'BLUES'}),/inativo ou excluído/);
+    await assert.rejects(api('transferPlayer',{id:sourceId,from:'VERDE',to:'BLUES'}),/inativo ou excluído/);
+  }
+  await assert.rejects(api('editPlayer',{id:sourceId,name:'João Novo',congregation:'Norte'}),/Restaure/);
+  await api('setPlayerStatus',{id:sourceId,status:'active'});
+  await api('addPlayer',{name:before.name,congregation:before.congregation,team:'BLUES'});
+  assert.deepEqual(records.get(`players/${sourceId}`).teams,['VERDE','BLUES']);
+  assert.ok(records.has('events/old-source'));
+});
+
+test('diretor não edita, inativa ou exclui jogadores e situação inválida não grava', async () => {
+  const director = await mergeFixture({role:'director',team:'VERDE'});
+  const before = JSON.stringify([...director.records]);
+  for (const status of ['inactive','deleted','active']) await assert.rejects(director.api('setPlayerStatus',{id:director.sourceId,status}),/administração/);
+  await assert.rejects(director.api('editPlayer',{id:director.sourceId,name:'Outro nome',congregation:'Norte'}),/administração/);
+  assert.equal(JSON.stringify([...director.records]),before);
+  const admin = await mergeFixture();
+  await assert.rejects(admin.api('setPlayerStatus',{id:admin.sourceId,status:'invalid'}),/inválida/);
+  await assert.rejects(admin.api('setPlayerStatus',{id:admin.sourceId,status:'active'}),/já está/);
+});
+
+test('edição move a identidade, preserva situação e redireciona inscrições pelo nome antigo', async () => {
+  const {api,records,sourceId} = await mergeFixture();
+  await api('setPlayerStatus',{id:sourceId,status:'inactive'});
+  await api('editPlayer',{id:sourceId,name:'João Silva Corrigido',congregation:'Norte'});
+  const id = await playerId('João Silva Corrigido','Norte');
+  const p = records.get(`players/${id}`);
+  assert.equal(p.status,'inactive'); assert.deepEqual(p.teams,['VERDE']);
+  assert.equal(records.get(`players/${sourceId}`).mergedInto,id);
+  assert.deepEqual(records.get(`players/${sourceId}`).teams,[]);
+  assert.equal(records.get(`events/${p.lastEvent}`).previousName,'Joao Silva');
+  await assert.rejects(api('addPlayer',{name:'Joao Silva',congregation:'Centro',team:'BLUES'}),/inativo ou excluído/);
+  await api('setPlayerStatus',{id,status:'active'});
+  await api('addPlayer',{name:'Joao Silva',congregation:'Centro',team:'BLUES'});
+  assert.deepEqual(records.get(`players/${id}`).teams,['VERDE','BLUES']);
+});
+
+test('edição rejeita identidade existente e dados inválidos; ajuste de caixa preserva o id', async () => {
+  const {api,records,sourceId} = await mergeFixture();
+  const before = JSON.stringify([...records]);
+  await assert.rejects(api('editPlayer',{id:sourceId,name:'João da Silva',congregation:'Centro'}),/Já existe/);
+  await assert.rejects(api('editPlayer',{id:sourceId,name:'A',congregation:'Centro'}),/válidos/);
+  assert.equal(JSON.stringify([...records]),before);
+  await api('editPlayer',{id:sourceId,name:'JOÃO SILVA',congregation:'CENTRO'});
+  assert.equal(records.get(`players/${sourceId}`).name,'JOÃO SILVA');
+  assert.equal(records.get(`players/${sourceId}`).mergedInto,undefined);
+});
+
+test('admin cria time dinâmico e inscreve jogador, vincula diretor e transfere para ele', async () => {
+  const id = await playerId('João Silva','Centro');
+  const {api,records} = setup({role:'admin'},{'users/new':{role:'pending',team:''},'settings/transfers':{open:true}});
+  await api('createTeam',{id:'team_roxo',name:'Roxo',color:'purple',badge:'🟣'});
+  assert.equal(Object.keys(records.get('settings/teams').items).length,9);
+  await api('addPlayer',{name:'João Silva',congregation:'Centro',team:'team_roxo'});
+  await api('assignDirector',{uid:'new',team:'team_roxo'});
+  assert.equal(records.get('users/new').team,'team_roxo');
+  await api('transferPlayer',{id,from:'team_roxo',to:'VERDE'});
+  await api('transferPlayer',{id,from:'VERDE',to:'team_roxo'});
+  const player = records.get(`players/${id}`);
+  assert.deepEqual(player.teams,['team_roxo']);
+  assert.equal(records.get(`events/${player.lastEvent}`).detail,'VERDE → ROXO');
+});
+
+test('renomear time mantém o id, inscrições e vínculo do diretor e não altera os outros times', async () => {
+  const playerIdValue = await playerId('João Silva','Centro');
+  const {api,records} = setup({role:'admin'},{'users/new':{role:'director',team:'VERDE'}});
+  await api('addPlayer',{name:'João Silva',congregation:'Centro',team:'VERDE'});
+  const playerBefore = {...records.get(`players/${playerIdValue}`)};
+  await api('editTeam',{id:'VERDE',name:'Esmeralda',color:'green',badge:'🟢'});
+  const catalog = records.get('settings/teams');
+  assert.equal(catalog.items.VERDE.name,'ESMERALDA');
+  assert.deepEqual(catalog.items.BRANCO,DEFAULT_TEAMS.BRANCO);
+  assert.deepEqual(records.get(`players/${playerIdValue}`),playerBefore);
+  assert.equal(records.get('users/new').team,'VERDE');
+  const event = records.get(`events/${catalog.lastEvent}`);
+  assert.equal(event.previous.name,'VERDE'); assert.equal(event.next.name,'ESMERALDA');
+});
+
+test('inativar e excluir time preserva vínculos e bloqueia novas entradas, mas permite saída e restauração', async () => {
+  const id = await playerId('João Silva','Centro');
+  const {api,records} = setup({role:'admin'},{'users/new':{role:'pending',team:''},'settings/transfers':{open:true}});
+  await api('addPlayer',{name:'João Silva',congregation:'Centro',team:'VERDE'});
+  for (const status of ['inactive','deleted']) {
+    await api('setTeamStatus',{id:'VERDE',status});
+    assert.deepEqual(records.get(`players/${id}`).teams,['VERDE']);
+    await assert.rejects(api('addPlayer',{name:'Outro Jogador',congregation:'Centro',team:'VERDE'}),/inativo ou excluído/);
+    await assert.rejects(api('assignDirector',{uid:'new',team:'VERDE'}),/inativo ou excluído/);
+  }
+  await api('transferPlayer',{id,from:'VERDE',to:'BRANCO'});
+  await assert.rejects(api('transferPlayer',{id,from:'BRANCO',to:'VERDE'}),/inativo ou excluído/);
+  await assert.rejects(api('editTeam',{id:'VERDE',name:'Nome',color:'blue',badge:'C'}),/Restaure/);
+  await api('setTeamStatus',{id:'VERDE',status:'active'});
+  await api('transferPlayer',{id,from:'BRANCO',to:'VERDE'});
+  assert.deepEqual(records.get(`players/${id}`).teams,['VERDE']);
+});
+
+test('diretor não gerencia times e duplicatas ou campos inválidos não geram escrita', async () => {
+  const director = setup({role:'director',team:'VERDE'});
+  for (const action of ['createTeam','editTeam','setTeamStatus']) await assert.rejects(director.api(action,{id:'VERDE',status:'inactive'}),/administração/);
+  assert.equal(director.records.size,1);
+  const {api,records} = setup({role:'admin'});
+  await assert.rejects(api('createTeam',{id:'new',name:'  vérde ',color:'green',badge:'🟢'}),/Já existe/);
+  await assert.rejects(api('createTeam',{id:'bad/id',name:'Time',color:'blue',badge:'C'}),/inválido/);
+  await assert.rejects(api('editTeam',{id:'VERDE',name:'Time',color:'invalid',badge:'C'}),/cor válida/);
+  await assert.rejects(api('setTeamStatus',{id:'VERDE',status:'invalid'}),/inválida/);
+  assert.equal(records.size,1);
+});
+
+test('diretor do time novo só inscreve no próprio time e limite de dois times continua válido', async () => {
+  const items = {...DEFAULT_TEAMS,team_roxo:{name:'ROXO',color:'purple',badge:'🟣',status:'active'}};
+  const {api,records} = setup({role:'director',team:'team_roxo'},{'settings/teams':{items}});
+  await api('addPlayer',{name:'João Silva',congregation:'Centro',team:'team_roxo'});
+  await assert.rejects(api('addPlayer',{name:'Maria Silva',congregation:'Centro',team:'BRANCO'}),/próprio time/);
+  const admin = setup({role:'admin'},Object.fromEntries([...records].filter(([key]) => key !== 'users/director')));
+  await admin.api('addPlayer',{name:'João Silva',congregation:'Centro',team:'BRANCO'});
+  await assert.rejects(admin.api('addPlayer',{name:'João Silva',congregation:'Centro',team:'BLUES'}),/dois times/);
 });

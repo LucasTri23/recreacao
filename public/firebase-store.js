@@ -1,4 +1,5 @@
-import { TEAMS, membership, playerId, mergedTeams } from './domain.js';
+import { membership, playerId, mergedTeams, playerDetails, isActivePlayer, playerStatus } from './domain.js';
+import {DEFAULT_TEAMS,changeTeam,teamActive} from './teams.js';
 export async function ensureAccessProfile(sdk, db, user) {
   const ref = sdk.doc(db, 'users', user.uid);
   let existingProfile = null;
@@ -32,22 +33,32 @@ export function createFirebaseApi(sdk, db, auth) {
         if (!['admin','director'].includes(profile?.role)) throw Error('Conta sem autorização.');
         const allowed = team => profile.role === 'admin' || profile.team === team;
         const event = { actor:uid, at:serverTimestamp() };
+        let teams = DEFAULT_TEAMS;
+        if (['createTeam','editTeam','setTeamStatus','addPlayer','transferPlayer','assignDirector','mergePlayers'].includes(action)) teams = (await tx.get(doc(db,'settings','teams'))).data()?.items || DEFAULT_TEAMS;
+        if (['createTeam','editTeam','setTeamStatus'].includes(action)) {
+          if (profile.role !== 'admin') throw Error('Apenas a administração pode gerenciar times.');
+          const change = changeTeam(teams,action,data);
+          tx.set(doc(db,'settings','teams'),{items:change.items,updatedAt:serverTimestamp(),lastEvent:eventRef.id});
+          const verb = {createTeam:'Time criado',editTeam:'Time editado',setTeamStatus:'Situação do time alterada'}[action];
+          tx.set(eventRef,{...event,kind:'team',action,teamId:data.id,previous:change.previous,next:change.next,name:change.next.name,detail:`${verb}: ${change.next.name}. Situação: ${change.next.status === 'active' ? 'ativo' : change.next.status === 'inactive' ? 'inativo' : 'excluído'}.`});
+          return;
+        }
         if (action === 'mergePlayers') {
           if (profile.role !== 'admin') throw Error('Apenas a administração pode unificar cadastros.');
           if (![data.sourceId,data.targetId].every(id => typeof id === 'string' && /^[a-f0-9]{64}$/.test(id)) || data.sourceId === data.targetId) throw Error('Escolha dois cadastros diferentes.');
           const sourceRef = doc(db,'players',data.sourceId), targetRef = doc(db,'players',data.targetId);
           const source = (await tx.get(sourceRef)).data(), target = (await tx.get(targetRef)).data();
-          if (!source || !target || source.mergedInto || target.mergedInto) throw Error('Cadastro alterado ou já unificado. Atualize a revisão.');
-          const teams = mergedTeams(source,target);
+          if (!source || !target || !isActivePlayer(source) || !isActivePlayer(target)) throw Error('Cadastro inativo, alterado ou já unificado. Atualize a revisão.');
+          const union = mergedTeams(source,target);
           tx.set(sourceRef,{...source,teams:[],mergedInto:data.targetId,updatedAt:serverTimestamp(),lastEvent:eventRef.id});
-          tx.set(targetRef,{...target,teams,updatedAt:serverTimestamp(),lastEvent:eventRef.id});
-          tx.set(eventRef,{...event,kind:'merge',sourceId:data.sourceId,targetId:data.targetId,name:target.name,sourceName:source.name,sourceCongregation:source.congregation,targetCongregation:target.congregation,sourceTeams:source.teams,targetTeams:target.teams,teams,detail:`Cadastro de ${source.name} (${source.congregation}) unificado com ${target.name} (${target.congregation}). Times: ${teams.join(', ')}.`});
+          tx.set(targetRef,{...target,teams:union,updatedAt:serverTimestamp(),lastEvent:eventRef.id});
+          tx.set(eventRef,{...event,kind:'merge',sourceId:data.sourceId,targetId:data.targetId,name:target.name,sourceName:source.name,sourceCongregation:source.congregation,targetCongregation:target.congregation,sourceTeams:source.teams,targetTeams:target.teams,teams:union,detail:`Cadastro de ${source.name} (${source.congregation}) unificado com ${target.name} (${target.congregation}). Times: ${union.map(id => teams[id]?.name || id).join(', ')}.`});
           return;
         }
         if (action === 'assignDirector') {
           if (profile.role !== 'admin') throw Error('Apenas a administração pode vincular acessos.');
           if (typeof data.uid !== 'string' || !data.uid || data.uid.includes('/') || data.uid === uid) throw Error('Conta inválida.');
-          if (data.team !== '' && !TEAMS.includes(data.team)) throw Error('Time inválido.');
+          if (data.team !== '' && !teamActive(teams,data.team)) throw Error('Time inválido, inativo ou excluído.');
           const ref = doc(db,'users',data.uid);
           const target = (await tx.get(ref)).data();
           if (!target) throw Error('A pessoa precisa entrar no site uma vez.');
@@ -74,23 +85,45 @@ export function createFirebaseApi(sdk, db, auth) {
             if (!previous) throw Error('Cadastro unificado não encontrado. Procure a administração.');
           }
         } else if (previous?.mergedInto) throw Error('Este cadastro foi unificado. Atualize a lista.');
+        if (['editPlayer','setPlayerStatus'].includes(action)) {
+          if (profile.role !== 'admin') throw Error('Apenas a administração pode gerenciar jogadores.');
+          if (!previous) throw Error('Jogador não encontrado.');
+          if (action === 'setPlayerStatus') {
+            if (!['active','inactive','deleted'].includes(data.status)) throw Error('Situação inválida.');
+            if (playerStatus(previous) === data.status) throw Error('O jogador já está nessa situação.');
+            const labels = {active:'Ativado',inactive:'Inativado',deleted:'Excluído da relação'};
+            tx.set(ref,{...previous,status:data.status,updatedAt:serverTimestamp(),lastEvent:eventRef.id});
+            tx.set(eventRef,{...event,kind:'status',playerId:id,name:previous.name,previousStatus:playerStatus(previous),status:data.status,detail:`${labels[data.status]} pela administração. Congregação: ${previous.congregation}.`});
+          } else {
+            if (playerStatus(previous) === 'deleted') throw Error('Restaure o jogador antes de editar.');
+            const details = playerDetails(data), targetId = await playerId(details.name,details.congregation);
+            const targetRef = doc(db,'players',targetId);
+            if (targetId !== id && (await tx.get(targetRef)).data()) throw Error('Já existe um cadastro com esse nome e congregação. Confira a lista e use a revisão de duplicidades.');
+            tx.set(targetRef,{...previous,...details,updatedAt:serverTimestamp(),lastEvent:eventRef.id});
+            if (targetId !== id) tx.set(ref,{...previous,teams:[],mergedInto:targetId,updatedAt:serverTimestamp(),lastEvent:eventRef.id});
+            tx.set(eventRef,{...event,kind:'edit',playerId:targetId,sourceId:id,name:details.name,congregation:details.congregation,previousName:previous.name,previousCongregation:previous.congregation,detail:`Cadastro editado: ${previous.name} (${previous.congregation}) → ${details.name} (${details.congregation}).`});
+          }
+          return;
+        }
+        if (previous && !isActivePlayer(previous)) throw Error('Este jogador está inativo ou excluído. Peça à administração para reativá-lo.');
         let next, from = '', to;
         if (action === 'addPlayer') {
-          const name = data.name.trim().replace(/\s+/g,' '), congregation = data.congregation.trim().replace(/\s+/g,' ');
-          if (name.length < 3 || name.length > 120 || congregation.length < 2 || congregation.length > 120 || /[|]/.test(name + congregation)) throw Error('Informe nome completo e congregação válidos (até 120 caracteres, sem |).');
+          const {name,congregation} = playerDetails(data);
           to = data.team;
-          if (!TEAMS.includes(to) || !allowed(to)) throw Error('Você só pode cadastrar no seu próprio time.');
+          if (!allowed(to)) throw Error('Você só pode cadastrar no seu próprio time.');
+          if (!teamActive(teams,to)) throw Error('Time inválido, inativo ou excluído.');
           next = {...(previous || {name, congregation}), teams:membership(previous || {teams:[]}, to)};
         } else if (action === 'transferPlayer') {
           const window = (await tx.get(doc(db,'settings','transfers'))).data();
           if (!window?.open) throw Error('A janela de transferências está fechada.');
           if (!previous) throw Error('Jogador não encontrado.');
           from = data.from; to = data.to;
-          if (!allowed(from) || !TEAMS.includes(to)) throw Error('Você só pode transferir jogadores do seu próprio time.');
+          if (!allowed(from)) throw Error('Você só pode transferir jogadores do seu próprio time.');
+          if (!teamActive(teams,to)) throw Error('Time de destino inválido, inativo ou excluído.');
           next = {...previous, teams:membership(previous, from, to)};
         } else throw Error('Operação inválida.');
         tx.set(ref, {...next, updatedAt:serverTimestamp(), lastEvent:eventRef.id});
-        tx.set(eventRef, {...event, kind:from ? 'transfer' : 'add', playerId:resolvedId, name:next.name, from, to, detail:from ? `${from} → ${to}` : `Inscrição em ${to}`});
+        tx.set(eventRef, {...event, kind:from ? 'transfer' : 'add', playerId:resolvedId, name:next.name, from, to, detail:from ? `${teams[from].name} → ${teams[to].name}` : `Inscrição em ${teams[to].name}`});
       });
     } catch(e) {
       if (e.code === 'permission-denied') throw Error('Operação não autorizada. Confira seu time, a janela e as regras publicadas.');

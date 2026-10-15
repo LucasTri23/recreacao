@@ -1,6 +1,6 @@
-import {playerSuggestions,duplicatePairs,mergedTeams} from './domain.js';
+import {playerSuggestions,duplicatePairs,mergedTeams,playerStatus,isActivePlayer} from './domain.js';
 
-export function setupDuplicates({element,getPlayers,isAdmin,openAdd,mutate,toast}) {
+export function setupDuplicates({element,getPlayers,isAdmin,openAdd,mutate,toast,teamName = id => id}) {
   const form = document.querySelector('#player-form');
   const name = form.elements.name, congregation = form.elements.congregation;
   const suggestions = element('div',null,'player-suggestions');
@@ -21,9 +21,11 @@ export function setupDuplicates({element,getPlayers,isAdmin,openAdd,mutate,toast
     suggestions.append(element('strong','Possível cadastro existente. É a mesma pessoa?'));
     for (const {player} of candidates) {
       const card = element('div',null,'duplicate-card');
-      card.append(element('strong',player.name),element('p',`${player.congregation} · Times: ${player.teams.join(', ')}`));
+      card.append(element('strong',player.name),element('p',`${player.congregation} · Times: ${player.teams.map(teamName).join(', ')}`));
+      if (!isActivePlayer(player)) card.append(element('p',playerStatus(player) === 'deleted' ? 'Cadastro excluído: peça à administração para restaurá-lo.' : 'Jogador inativo: peça à administração para reativá-lo.'));
       const use = element('button','É a mesma pessoa · usar cadastro','row-action'); use.type = 'button';
       use.onclick = () => {
+        if (!isActivePlayer(player)) return toast('Peça à administração para reativar ou restaurar este cadastro.');
         if (player.teams.length >= 2) return toast('Este irmão já participa de dois times. Não crie outro cadastro para inscrevê-lo novamente.');
         const dialog = form.closest('dialog'); dialog.close(); openAdd(player);
       };
@@ -33,17 +35,15 @@ export function setupDuplicates({element,getPlayers,isAdmin,openAdd,mutate,toast
     }
   }
   name.addEventListener('input',suggest); congregation.addEventListener('input',suggest);
-  const button = element('button','⚑ Revisar duplicidades'); button.hidden = true;
-  document.querySelector('nav').append(button);
+  const button = document.querySelector('#duplicates-link');
   function dialog(title) {
     const result = element('dialog',null,'duplicate-dialog');
     const heading = element('div',null,'dialog-title'), close = element('button','×','close');
     close.type = 'button'; close.setAttribute('aria-label','Fechar'); close.onclick = () => result.close();
     heading.append(element('h2',title),close); result.append(heading); document.body.append(result); return result;
   }
-  const review = dialog('Revisar possíveis duplicidades');
-  review.append(element('p','Nomes parecidos são sugestões. Confira se é o mesmo irmão antes de unificar, mesmo quando as congregações forem diferentes.'));
-  const list = element('div'); review.append(list);
+  const review = document.querySelector('#duplicates-page');
+  const list = document.querySelector('#duplicates-list');
   const merge = dialog('Confirmar unificação');
   const mergeForm = element('form'); merge.append(mergeForm);
   let selectedPair = null;
@@ -64,7 +64,7 @@ export function setupDuplicates({element,getPlayers,isAdmin,openAdd,mutate,toast
       confirmed.checked = false; preview.replaceChildren(); error.textContent = '';
       const keep = select.value === target.id ? target : source, archive = keep === target ? source : target;
       preview.append(element('p',`Manter: ${keep.name} · ${keep.congregation}`),element('p',`Unificar: ${archive.name} · ${archive.congregation}`));
-      try { preview.append(element('strong',`Times após unificar: ${mergedTeams(archive,keep).join(', ')}`)); save.disabled = false; }
+      try { preview.append(element('strong',`Times após unificar: ${mergedTeams(archive,keep).map(teamName).join(', ')}`)); save.disabled = false; }
       catch(e) { error.textContent = e.message; save.disabled = true; }
       preview.append(element('p','O cadastro duplicado ficará arquivado. O histórico será preservado e novas inscrições pelo nome antigo usarão o cadastro mantido.'));
     }
@@ -86,16 +86,16 @@ export function setupDuplicates({element,getPlayers,isAdmin,openAdd,mutate,toast
     if (!pairs.length) list.append(element('p','Nenhuma possível duplicidade encontrada.'));
     for (const {source,target} of pairs) {
       const card = element('div',null,'duplicate-card');
-      for (const player of [source,target]) card.append(element('strong',player.name),element('p',`${player.congregation} · Times: ${player.teams.join(', ')}`));
+      for (const player of [source,target]) card.append(element('strong',player.name),element('p',`${player.congregation} · Times: ${player.teams.map(teamName).join(', ')}`));
       const inspect = element('button','Conferir e unificar','row-action'); inspect.onclick = () => prepareMerge(source,target); card.append(inspect); list.append(card);
     }
   }
-  button.onclick = () => { renderReview(); review.showModal(); };
   return {
     refresh() {
       button.hidden = !isAdmin();
-      if (!isAdmin()) { review.close(); merge.close(); }
-      else if (review.open) renderReview();
+      document.querySelector('#duplicates-restricted').hidden = isAdmin();
+      if (!isAdmin()) { list.replaceChildren(); merge.close(); }
+      else if (!review.hidden) renderReview();
       if (merge.open && selectedPair && [selectedPair.source,selectedPair.target].some(p => !getPlayers().some(current => current.id === p.id))) merge.close();
       if (form.closest('dialog').open) suggest();
     },

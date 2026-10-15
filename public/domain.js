@@ -1,4 +1,11 @@
 export const TEAMS = ['BRANCO','PRETO','BLUES','COIOTES','VETOR NORTE','AMARELO','LARANJA','VERDE'];
+export const playerStatus = player => player.status || 'active';
+export const isActivePlayer = player => !player.mergedInto && playerStatus(player) === 'active';
+export function playerDetails(data) {
+  const name = String(data.name || '').trim().replace(/\s+/g,' '), congregation = String(data.congregation || '').trim().replace(/\s+/g,' ');
+  if (name.length < 3 || name.length > 120 || congregation.length < 2 || congregation.length > 120 || /[|]/.test(name + congregation)) throw Error('Informe nome completo e congregação válidos (até 120 caracteres, sem |).');
+  return {name,congregation};
+}
 export function identity(name, congregation) {
   const clean = value => value.toLowerCase().replace(/[àáâãäå]/g,'a').replace(/[èéêë]/g,'e').replace(/[ìíîï]/g,'i').replace(/[òóôõö]/g,'o').replace(/[ùúûü]/g,'u').replace(/ç/g,'c').replace(/ñ/g,'n').replace(/[ýÿ]/g,'y').replace(/[\u0300-\u036f]/g,'').trim().replace(/\s+/g, ' ');
   return `${clean(name)}|${clean(congregation)}`;
@@ -46,7 +53,7 @@ export function playerSuggestions(players, name, congregation = '') {
   }).filter(item => item.score >= .72).sort((a,b) => b.score - a.score || Number(b.sameCongregation) - Number(a.sameCongregation) || a.player.name.localeCompare(b.player.name,'pt-BR'));
 }
 export function duplicatePairs(players) {
-  const active = players.filter(p => !p.mergedInto), pairs = [];
+  const active = players.filter(isActivePlayer), pairs = [];
   for (let i = 0; i < active.length; i++) for (let j = i+1; j < active.length; j++) {
     const score = similarity(active[i].name,active[j].name);
     if (score >= .72) pairs.push({source:active[i],target:active[j],score});
