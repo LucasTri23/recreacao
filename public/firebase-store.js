@@ -1,4 +1,4 @@
-import { membership, playerId, mergedTeams, playerDetails, isActivePlayer, playerStatus } from './domain.js';
+import { membership, playerId, mergedTeams, playerDetails, isActivePlayer, playerStatus, reviewKey } from './domain.js';
 import {DEFAULT_TEAMS,changeTeam,teamActive} from './teams.js';
 export async function ensureAccessProfile(sdk, db, user) {
   const ref = sdk.doc(db, 'users', user.uid);
@@ -33,6 +33,18 @@ export function createFirebaseApi(sdk, db, auth) {
         if (!['admin','director'].includes(profile?.role)) throw Error('Conta sem autorização.');
         const allowed = team => profile.role === 'admin' || profile.team === team;
         const event = { actor:uid, at:serverTimestamp() };
+        if (action === 'reviewDuplicates') {
+          if (profile.role !== 'admin') throw Error('Apenas a administração pode concluir revisões.');
+          if (![data.sourceId,data.targetId].every(id => typeof id === 'string' && /^[a-f0-9]{64}$/.test(id)) || data.sourceId === data.targetId || typeof data.different !== 'boolean') throw Error('Revisão inválida.');
+          const [sourceId,targetId] = [data.sourceId,data.targetId].sort();
+          const source = (await tx.get(doc(db,'players',sourceId))).data(), target = (await tx.get(doc(db,'players',targetId))).data();
+          if (!source || !target || !isActivePlayer(source) || !isActivePlayer(target)) throw Error('Cadastros alterados ou inativos. Atualize a revisão.');
+          const reviewId = reviewKey(sourceId,targetId), ref = doc(db,'duplicateReviews',reviewId);
+          await tx.get(ref);
+          tx.set(ref,{sourceId,targetId,sourceName:source.name,targetName:target.name,sourceCongregation:source.congregation,targetCongregation:target.congregation,different:data.different,actor:uid,updatedAt:serverTimestamp(),lastEvent:eventRef.id});
+          tx.set(eventRef,{...event,kind:'duplicateReview',reviewId,name:source.name,different:data.different,teams:[...new Set([...source.teams,...target.teams])],detail:`${source.name} (${source.congregation}) e ${target.name} (${target.congregation}): ${data.different ? 'confirmados como pessoas diferentes' : 'revisão reaberta'}.`});
+          return;
+        }
         let teams = DEFAULT_TEAMS;
         if (['createTeam','editTeam','setTeamStatus','addPlayer','transferPlayer','assignDirector','mergePlayers'].includes(action)) teams = (await tx.get(doc(db,'settings','teams'))).data()?.items || DEFAULT_TEAMS;
         if (['createTeam','editTeam','setTeamStatus'].includes(action)) {
@@ -93,7 +105,7 @@ export function createFirebaseApi(sdk, db, auth) {
             if (playerStatus(previous) === data.status) throw Error('O jogador já está nessa situação.');
             const labels = {active:'Ativado',inactive:'Inativado',deleted:'Excluído da relação'};
             tx.set(ref,{...previous,status:data.status,updatedAt:serverTimestamp(),lastEvent:eventRef.id});
-            tx.set(eventRef,{...event,kind:'status',playerId:id,name:previous.name,previousStatus:playerStatus(previous),status:data.status,detail:`${labels[data.status]} pela administração. Congregação: ${previous.congregation}.`});
+            tx.set(eventRef,{...event,kind:'status',playerId:id,name:previous.name,teams:previous.teams,previousStatus:playerStatus(previous),status:data.status,detail:`${labels[data.status]} pela administração. Congregação: ${previous.congregation}.`});
           } else {
             if (playerStatus(previous) === 'deleted') throw Error('Restaure o jogador antes de editar.');
             const details = playerDetails(data), targetId = await playerId(details.name,details.congregation);
@@ -101,7 +113,7 @@ export function createFirebaseApi(sdk, db, auth) {
             if (targetId !== id && (await tx.get(targetRef)).data()) throw Error('Já existe um cadastro com esse nome e congregação. Confira a lista e use a revisão de duplicidades.');
             tx.set(targetRef,{...previous,...details,updatedAt:serverTimestamp(),lastEvent:eventRef.id});
             if (targetId !== id) tx.set(ref,{...previous,teams:[],mergedInto:targetId,updatedAt:serverTimestamp(),lastEvent:eventRef.id});
-            tx.set(eventRef,{...event,kind:'edit',playerId:targetId,sourceId:id,name:details.name,congregation:details.congregation,previousName:previous.name,previousCongregation:previous.congregation,detail:`Cadastro editado: ${previous.name} (${previous.congregation}) → ${details.name} (${details.congregation}).`});
+            tx.set(eventRef,{...event,kind:'edit',playerId:targetId,sourceId:id,name:details.name,congregation:details.congregation,teams:previous.teams,previousName:previous.name,previousCongregation:previous.congregation,detail:`Cadastro editado: ${previous.name} (${previous.congregation}) → ${details.name} (${details.congregation}).`});
           }
           return;
         }

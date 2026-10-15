@@ -52,11 +52,21 @@ export function playerSuggestions(players, name, congregation = '') {
     return {player,score,sameCongregation:!!congregation && normalizedName(congregation) === normalizedName(player.congregation)};
   }).filter(item => item.score >= .72).sort((a,b) => b.score - a.score || Number(b.sameCongregation) - Number(a.sameCongregation) || a.player.name.localeCompare(b.player.name,'pt-BR'));
 }
-export function duplicatePairs(players) {
+export function reviewKey(a,b) { return [a,b].sort().join('_'); }
+export function reviewMatches(review,source,target) {
+  const [a,b] = [source,target].sort((a,b) => a.id.localeCompare(b.id));
+  return review?.different === true && review.sourceId === a.id && review.targetId === b.id
+    && review.sourceName === a.name && review.targetName === b.name
+    && review.sourceCongregation === a.congregation && review.targetCongregation === b.congregation;
+}
+export function duplicatePairs(players,reviews = []) {
   const active = players.filter(isActivePlayer), pairs = [];
   for (let i = 0; i < active.length; i++) for (let j = i+1; j < active.length; j++) {
     const score = similarity(active[i].name,active[j].name);
-    if (score >= .72) pairs.push({source:active[i],target:active[j],score});
+    if (score >= .72) {
+      const source = active[i],target = active[j];
+      pairs.push({source,target,score,reviewed:reviews.some(review => reviewMatches(review,source,target))});
+    }
   }
   return pairs.sort((a,b) => b.score-a.score);
 }

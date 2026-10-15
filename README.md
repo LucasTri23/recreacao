@@ -56,7 +56,7 @@ O cadastro antigo fica arquivado, com referência ao mantido. Não conta mais co
 
 ## Navegação
 
-O menu separa Nossos times, Jogadores, Movimentações e Duplicidades em telas com endereços próprios: #/times, #/jogadores, #/movimentacoes e #/duplicidades. Os endereços funcionam no GitHub Pages e permitem voltar/avançar pelo navegador. Clicar em um time abre a página de jogadores com esse time selecionado. Movimentações mostra os 100 registros mais recentes e atualiza automaticamente. Duplicidades continua restrita à administração; a confirmação de unificação permanece em diálogo.
+O menu separa Nossos times, Jogadores, Movimentações e Duplicidades em telas com endereços próprios: #/times, #/jogadores, #/movimentacoes e #/duplicidades. Os endereços funcionam no GitHub Pages e permitem voltar/avançar pelo navegador. Clicar em um time abre a página de jogadores com esse time selecionado. Movimentações carrega inicialmente 100 registros, atualiza automaticamente e permite carregar mais. Duplicidades continua restrita à administração; a confirmação de unificação permanece em diálogo.
 
 ## Gerenciar jogadores
 
@@ -73,3 +73,27 @@ A página Gerenciar times (#/gerenciar-times) é exclusiva da administração. P
 O catálogo fica em settings/teams. Na ausência desse documento, cliente e regras usam os oito times iniciais; a primeira alteração administrativa salva o catálogo completo. Os identificadores dos times atuais são preservados. Novos times recebem identificadores estáveis; renomear altera apenas a apresentação, mantendo jogadores e diretores vinculados.
 
 Inativar ou excluir é recuperável, retira o time da página principal e bloqueia inscrições, transferências de entrada e novos vínculos de diretores. Os jogadores e diretores existentes são preservados, assim como o histórico. Transferências de saída continuam permitidas durante a janela. O limite de dois times por jogador inclui os vínculos preservados com times inativos/excluídos. Toda alteração do catálogo usa transação com histórico e exige perfil de administrador nas regras do banco.
+
+## Exportar e imprimir relações
+
+Em Nossos times ou Jogadores, use **Exportar / imprimir**. Escolha todos os times ativos ou um time específico. A relação contém apenas jogadores ativos, em ordem alfabética, com congregação, todos os times do jogador, campo de conferência e data de geração em horário de Brasília. Times sem jogadores aparecem como vazios; times inativos/excluídos podem ser selecionados individualmente para conferência.
+
+**Baixar CSV** gera um arquivo com acentos e separador ponto e vírgula. **Baixar relação offline** gera um HTML independente, que pode ser aberto sem internet e tem botão de impressão. **Imprimir / salvar PDF** abre a impressão do navegador em A4 paisagem, com cada time começando em uma nova página. O relatório é uma cópia do momento da geração; não recebe atualizações depois de baixado. A exportação só fica habilitada após carregar os times e jogadores de uma sessão autorizada.
+
+## Concluir revisões de duplicidade
+
+Na página Duplicidades, o admin pode escolher **São pessoas diferentes**, conferir as duas identidades e confirmar. A decisão é compartilhada entre administradores, sai das pendências e fica no filtro **Pessoas diferentes · concluídas**, com opção de **Reabrir revisão**. Cada decisão fica registrada em Movimentações. Os dados ficam em duplicateReviews, com leitura e escrita exclusivas de administradores e histórico na mesma transação.
+
+A decisão vale para aquele par e para os nomes/congregações revisados. Se uma identidade mudar, a revisão deixa de ocultar o alerta. As sugestões durante um novo cadastro continuam disponíveis para evitar novas inscrições duplicadas.
+
+## Regressão das regras de edição
+
+Execute `npm.cmd run test:rules` com o Firebase CLI autenticado para simular 21 verificações de edição no serviço de regras, usando apenas cadastros fictícios e mocks de leitura. Não altera jogadores reais. O teste cobre a mudança de identidade, o histórico, a recusa a diretores, a preservação dos times e a prevenção de sobrescrita, com catálogo inicial ou persistido. Os timestamps das fixtures são representados por um valor fixo para isolar a lógica das regras.
+
+As permissões de jogadores selecionam a validação pelo tipo de operação antes de executar verificações completas, evitando exceder o limite de avaliação do Firestore durante uma edição. Os testes de transação com mocks de SDK (`npm test`) não substituem essa verificação das regras.
+
+## Filtros de movimentações
+
+A página Movimentações permite combinar jogador (nome atual ou anterior), time, tipo de ação e datas inicial/final. A pesquisa ignora caixa e acentos; o período inclui os dias inteiros no horário de Brasília. Limpar filtros restaura a listagem. O contador informa quantos resultados correspondem aos registros carregados. Use Carregar mais movimentações para ampliar a consulta em blocos de 100; os filtros continuam aplicados e não exigem índices compostos no Firestore.
+
+Inscrições e transferências usam os times registrados no evento; unificações usam os times envolvidos. Novas edições, alterações de situação e revisões de duplicidade guardam os times do momento no histórico. Eventos antigos dessas ações, quando não têm times salvos, usam os vínculos atuais do jogador (incluindo referências de cadastros corrigidos/unificados). Esse limite está indicado na própria página. Movimentações gerais da janela não pertencem a um time específico.

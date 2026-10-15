@@ -6,6 +6,7 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "test": "node --test",
+    "test:rules": "node scripts/check-edit-rules.mjs",
     "start": "node server.mjs",
     "firebase:login": "firebase login",
     "deploy": "firebase deploy --only firestore:rules",

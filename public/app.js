@@ -1,21 +1,27 @@
 import { firebaseConfig } from './firebase-config.js';
-import { identity, membership, playerId, mergedTeams, playerStatus, isActivePlayer, playerDetails } from './domain.js';
+import { identity, membership, playerId, mergedTeams, playerStatus, isActivePlayer, playerDetails,reviewKey } from './domain.js';
 import { setupDuplicates } from './duplicates.js';
 import { setupPages } from './pages.js';
 import { setupPlayerManagement } from './player-management.js';
 import { DEFAULT_TEAMS,TEAM_COLORS,changeTeam,teamActive } from './teams.js';
 import { setupTeamManagement } from './team-management.js';
+import { setupRoster } from './roster.js';
+import { setupHistory } from './history.js';
 const $ = s => document.querySelector(s);
 let teamCatalog = structuredClone(DEFAULT_TEAMS);
 const teamIds = (activeOnly = false) => Object.keys(teamCatalog).filter(id => !activeOnly || teamActive(teamCatalog,id));
 const teamName = id => teamCatalog[id]?.name || id;
 let players = [], logs = [], windowOpen = false, profile = null, user = null, api = null, filter = 'all', transferring = null;
 const demo = !firebaseConfig;
+let reviews = [], playersReady = demo, teamsReady = demo;
+let historyLimit = 100, historyHasMore = false, historyLoading = false, historyLoader = null;
 let accessUsers = [];
 let archivedPlayers = [];
-const duplicates = setupDuplicates({element,getPlayers:() => players,isAdmin:() => demo || profile?.role === 'admin',openAdd,mutate,toast,teamName});
+const duplicates = setupDuplicates({element,getPlayers:() => players,getReviews:() => reviews,isAdmin:() => demo || profile?.role === 'admin',openAdd,mutate,toast,teamName});
 const management = setupPlayerManagement({element,isAdmin:() => demo || profile?.role === 'admin',getPlayers:() => players,mutate,toast,teamName});
 const teamManagement = setupTeamManagement({element,isAdmin:() => demo || profile?.role === 'admin',getTeams:() => teamCatalog,getPlayers:() => players,getUsers:() => accessUsers,mutate,toast});
+const roster = setupRoster({element,getPlayers:() => players,getTeams:() => teamCatalog,canExport:() => playersReady && teamsReady && (demo || ['admin','director'].includes(profile?.role)),toast});
+const history = setupHistory({element,getLogs:() => logs,getTeams:() => teamCatalog,getPlayers:() => [...players,...archivedPlayers],canRead:() => demo || ['admin','director'].includes(profile?.role),canLoadMore:() => historyHasMore,isLoading:() => historyLoading,loadMore:() => historyLoader?.()});
 const statusFilter = element('select'); statusFilter.id = 'status-filter'; statusFilter.setAttribute('aria-label','Filtrar situação do jogador');
 for (const [value,label] of [['active','Ativos'],['inactive','Inativos'],['deleted','Excluídos'],['all','Todas as situações']]) { const option = element('option',label); option.value = value; statusFilter.append(option); }
 $('#team-filter').after(statusFilter); statusFilter.onchange = renderPlayers;
@@ -78,6 +84,7 @@ function render() {
   statusFilter.hidden = !(demo || profile?.role === 'admin');
   if (statusFilter.hidden) statusFilter.value = 'active';
   management.refresh();
+  roster.refresh();
   teamManagement.refresh();
   const selectedTeam = $('#team-filter').value;
   options($('#team-filter'),['',...teamIds()]); $('#team-filter').options[0].textContent = 'Todos os times'; $('#team-filter').value = teamIds().includes(selectedTeam) ? selectedTeam : '';
@@ -144,14 +151,23 @@ function openTransfer(p) {
   transferring = p.id; $('#transfer-form .form-error').textContent = ''; $('#transfer-name').textContent = `${p.name} · ${p.congregation}`;
   options($('#transfer-form [name=from]'), p.teams.filter(allowed)); options($('#transfer-form [name=to]'), teamIds(true).filter(t => !p.teams.includes(t))); $('#transfer-dialog').showModal();
 }
-function saveDemo() { localStorage.setItem('recreacao-demo-v1', JSON.stringify({ players, archivedPlayers, logs, windowOpen,teamCatalog })); render(); }
+function saveDemo() { localStorage.setItem('recreacao-demo-v1', JSON.stringify({ players, archivedPlayers, logs, windowOpen,teamCatalog,reviews })); render(); }
 async function mutate(action, data) {
   if (!demo) { await api(action, data); return; }
+  if (action === 'reviewDuplicates') {
+    const [sourceId,targetId] = [data.sourceId,data.targetId].sort();
+    const source = players.find(p => p.id === sourceId), target = players.find(p => p.id === targetId);
+    if (!source || !target || sourceId === targetId || !isActivePlayer(source) || !isActivePlayer(target) || typeof data.different !== 'boolean') throw Error('Revisão inválida.');
+    const id = reviewKey(sourceId,targetId);
+    reviews = reviews.filter(r => reviewKey(r.sourceId,r.targetId) !== id);
+    reviews.push({sourceId,targetId,sourceName:source.name,targetName:target.name,sourceCongregation:source.congregation,targetCongregation:target.congregation,different:data.different});
+    logs.unshift({kind:'duplicateReview',name:source.name,teams:[...new Set([...source.teams,...target.teams])],detail:`${source.name} (${source.congregation}) e ${target.name} (${target.congregation}): ${data.different ? 'confirmados como pessoas diferentes' : 'revisão reaberta'}.`,at:Date.now()});
+  }
   if (['createTeam','editTeam','setTeamStatus'].includes(action)) {
     const change = changeTeam(teamCatalog,action,data); teamCatalog = change.items;
-    logs.unshift({name:change.next.name,detail:`Time ${action === 'createTeam' ? 'criado' : 'atualizado'}: ${change.next.name}. Situação: ${change.next.status === 'active' ? 'ativo' : change.next.status === 'inactive' ? 'inativo' : 'excluído'}.`,at:Date.now()});
+    logs.unshift({kind:'team',teamId:data.id,name:change.next.name,detail:`Time ${action === 'createTeam' ? 'criado' : 'atualizado'}: ${change.next.name}. Situação: ${change.next.status === 'active' ? 'ativo' : change.next.status === 'inactive' ? 'inativo' : 'excluído'}.`,at:Date.now()});
   }
-  if (action === 'setWindow') { windowOpen = data.open; logs.unshift({ name:'Janela de transferências', detail: windowOpen ? 'Aberta pela administração' : 'Fechada pela administração', at: Date.now() }); }
+  if (action === 'setWindow') { windowOpen = data.open; logs.unshift({kind:'window',name:'Janela de transferências', detail: windowOpen ? 'Aberta pela administração' : 'Fechada pela administração', at: Date.now() }); }
   if (action === 'addPlayer') {
     if (!teamActive(teamCatalog,data.team)) throw Error('Time inválido, inativo ou excluído.');
     let id = await playerId(data.name, data.congregation);
@@ -163,18 +179,18 @@ async function mutate(action, data) {
     const p = players.find(p => p.id === id);
     if (p && !isActivePlayer(p)) throw Error('Este jogador está inativo ou excluído. Reative o cadastro existente.');
     if (p) p.teams = membership(p, data.team); else players.push({ id, name:data.name.trim().replace(/\s+/g,' '), congregation:data.congregation.trim().replace(/\s+/g,' '), teams:[data.team] });
-    logs.unshift({ name:data.name, detail:`Inscrição em ${teamName(data.team)}`, at:Date.now() });
+    logs.unshift({kind:'add',playerId:id,to:data.team,name:data.name, detail:`Inscrição em ${teamName(data.team)}`, at:Date.now() });
   }
   if (action === 'editPlayer' || action === 'setPlayerStatus') {
     const p = players.find(p => p.id === data.id); if (!p) throw Error('Jogador não encontrado.');
     if (action === 'setPlayerStatus') {
       if (!['active','inactive','deleted'].includes(data.status)) throw Error('Situação inválida.');
-      p.status = data.status; logs.unshift({name:p.name,detail:`Situação alterada para ${data.status === 'active' ? 'ativo' : data.status === 'inactive' ? 'inativo' : 'excluído'}.`,at:Date.now()});
+      p.status = data.status; logs.unshift({kind:'status',playerId:p.id,teams:[...p.teams],name:p.name,detail:`Situação alterada para ${data.status === 'active' ? 'ativo' : data.status === 'inactive' ? 'inativo' : 'excluído'}.`,at:Date.now()});
     } else {
       if (playerStatus(p) === 'deleted') throw Error('Restaure o jogador antes de editar.');
       const details = playerDetails(data), id = await playerId(details.name,details.congregation);
       if (id !== p.id && [...players,...archivedPlayers].some(other => other.id === id)) throw Error('Já existe um cadastro com esse nome e congregação. Use a revisão de duplicidades.');
-      logs.unshift({name:details.name,detail:`Cadastro editado: ${p.name} (${p.congregation}) → ${details.name} (${details.congregation}).`,at:Date.now()});
+      logs.unshift({kind:'edit',playerId:id,sourceId:p.id,previousName:p.name,teams:[...p.teams],name:details.name,detail:`Cadastro editado: ${p.name} (${p.congregation}) → ${details.name} (${details.congregation}).`,at:Date.now()});
       if (id !== p.id) archivedPlayers.push({...p,teams:[],mergedInto:id});
       Object.assign(p,details,{id});
     }
@@ -183,7 +199,7 @@ async function mutate(action, data) {
     const source = players.find(p => p.id === data.sourceId), target = players.find(p => p.id === data.targetId);
     if (!source || !target || source === target || !isActivePlayer(source) || !isActivePlayer(target)) throw Error('Escolha dois cadastros diferentes e ativos.');
     const teams = mergedTeams(source,target);
-    logs.unshift({name:target.name,detail:`Cadastro de ${source.name} (${source.congregation}) unificado com ${target.name} (${target.congregation}). Times: ${teams.map(teamName).join(', ')}.`,at:Date.now()});
+    logs.unshift({kind:'merge',sourceName:source.name,sourceId:source.id,targetId:target.id,teams:[...teams],name:target.name,detail:`Cadastro de ${source.name} (${source.congregation}) unificado com ${target.name} (${target.congregation}). Times: ${teams.map(teamName).join(', ')}.`,at:Date.now()});
     target.teams = teams; archivedPlayers.push({...source,teams:[],mergedInto:target.id}); players = players.filter(p => p.id !== source.id);
   }
   if (action === 'transferPlayer') {
@@ -191,7 +207,7 @@ async function mutate(action, data) {
     if (!windowOpen) throw Error('A janela de transferências está fechada.');
     const p = players.find(p => p.id === data.id); if (!p) throw Error('Jogador não encontrado.');
     if (!isActivePlayer(p)) throw Error('Este jogador está inativo ou excluído. Reative o cadastro existente.');
-    p.teams = membership(p, data.from, data.to); logs.unshift({ name:p.name, detail:`${teamName(data.from)} → ${teamName(data.to)}`, at:Date.now() });
+    p.teams = membership(p, data.from, data.to); logs.unshift({kind:'transfer',playerId:p.id,from:data.from,to:data.to,name:p.name, detail:`${teamName(data.from)} → ${teamName(data.to)}`, at:Date.now() });
   }
   saveDemo();
 }
@@ -210,12 +226,11 @@ submit('#player-form','addPlayer', f => Object.fromEntries(f), '#player-dialog',
 submit('#transfer-form','transferPlayer', f => ({ ...Object.fromEntries(f), id:transferring }), '#transfer-dialog', 'Transferência registrada.');
 $('#window-toggle').onclick = async () => { try { await mutate('setWindow', { open:!windowOpen }); toast('Janela atualizada.'); } catch(e) { toast(e.message); } };
 function renderHistory() {
-  $('#history-list').replaceChildren(...logs.slice(0,100).map(l => { const e = element('div', null, 'history-item'); e.append(element('strong', l.name), element('div', l.detail), element('small', new Date(l.at?.toMillis?.() || l.at).toLocaleString('pt-BR'))); return e; }));
-  if (!logs.length) $('#history-list').append(element('p', 'As inscrições e transferências aparecerão aqui.'));
+  history.refresh();
 }
 setupPages(() => { duplicates.refresh(); teamManagement.refresh(); renderHistory(); });
 if (demo) {
-  try { const stored = JSON.parse(localStorage.getItem('recreacao-demo-v1')); if (stored) { ({ players, logs, windowOpen } = stored); archivedPlayers = stored.archivedPlayers || []; teamCatalog = stored.teamCatalog || structuredClone(DEFAULT_TEAMS); } } catch { localStorage.removeItem('recreacao-demo-v1'); }
+  try { const stored = JSON.parse(localStorage.getItem('recreacao-demo-v1')); if (stored) { ({ players, logs, windowOpen } = stored); archivedPlayers = stored.archivedPlayers || []; teamCatalog = stored.teamCatalog || structuredClone(DEFAULT_TEAMS); reviews = stored.reviews || []; } } catch { localStorage.removeItem('recreacao-demo-v1'); }
   $('#mode-notice').textContent = 'Demonstração local · Experimente os cadastros e transferências. Os dados ficam apenas neste navegador até conectar o Firebase.';
   $('#login').onclick = () => toast('Conecte o Firebase para habilitar o acesso dos diretores.'); render();
 } else {
@@ -233,7 +248,7 @@ if (demo) {
       const version = ++authVersion;
       unsubscribers.forEach(u => u()); unsubscribers = [];
       dataSubscriptions.forEach(u => u()); dataSubscriptions = [];
-      user = current; profile = null; players = []; logs = []; accessUsers = []; windowOpen = false; teamCatalog = structuredClone(DEFAULT_TEAMS); render();
+      user = current; profile = null; players = []; archivedPlayers = []; logs = []; accessUsers = []; reviews = []; playersReady = false; teamsReady = false; historyLimit = 100; historyHasMore = false; historyLoading = false; historyLoader = null; windowOpen = false; teamCatalog = structuredClone(DEFAULT_TEAMS); render();
       if (!current) { $('#mode-notice').textContent = 'Entre com sua conta de diretor para acessar os jogadores.'; return; }
       try {
         const accessResult = await ensureAccessProfile(dbSDK,db,current);
@@ -243,20 +258,35 @@ if (demo) {
         unsubscribers.push(dbSDK.onSnapshot(dbSDK.doc(db,'users',current.uid), snap => {
           if (version !== authVersion) return;
           dataSubscriptions.forEach(u => u()); dataSubscriptions = [];
-          profile = snap.data(); players = []; logs = []; accessUsers = []; windowOpen = false; teamCatalog = structuredClone(DEFAULT_TEAMS);
+          profile = snap.data(); players = []; archivedPlayers = []; logs = []; accessUsers = []; reviews = []; playersReady = false; teamsReady = false; historyLimit = 100; historyHasMore = false; historyLoading = false; historyLoader = null; windowOpen = false; teamCatalog = structuredClone(DEFAULT_TEAMS);
           if (!['admin','director'].includes(profile?.role)) {
             $('#mode-notice').textContent = 'Seu pedido de acesso foi enviado. Aguarde o administrador vincular sua conta a um time; esta tela será atualizada automaticamente.';
             render(); return;
           }
           $('#mode-notice').textContent = profile.role === 'admin' ? 'Administração · Use Gerenciar acessos para liberar diretores e escolher seus times.' : `Diretor · ${profile.team}. Você pode cadastrar e transferir jogadores do seu time.`;
           const active = callback => value => { if (version === authVersion && ['admin','director'].includes(profile?.role)) callback(value); };
-          dataSubscriptions.push(dbSDK.onSnapshot(dbSDK.doc(db,'settings','teams'),active(s => { teamCatalog = s.data()?.items || structuredClone(DEFAULT_TEAMS); renderAccess(); render(); }),error));
-          dataSubscriptions.push(dbSDK.onSnapshot(dbSDK.collection(db,'players'), active(s => { players = s.docs.map(d => ({...d.data(), id:d.id})).filter(p => !p.mergedInto); render(); }), error));
+          dataSubscriptions.push(dbSDK.onSnapshot(dbSDK.doc(db,'settings','teams'),active(s => { teamCatalog = s.data()?.items || structuredClone(DEFAULT_TEAMS); teamsReady = true; renderAccess(); render(); }),error));
+          dataSubscriptions.push(dbSDK.onSnapshot(dbSDK.collection(db,'players'), active(s => { const all = s.docs.map(d => ({...d.data(), id:d.id})); players = all.filter(p => !p.mergedInto); archivedPlayers = all.filter(p => p.mergedInto); playersReady = true; render(); }), error));
           dataSubscriptions.push(dbSDK.onSnapshot(dbSDK.doc(db,'settings','transfers'), active(s => { windowOpen = s.data()?.open === true; render(); }), error));
-          dataSubscriptions.push(dbSDK.onSnapshot(dbSDK.query(dbSDK.collection(db,'events'),dbSDK.orderBy('at','desc'),dbSDK.limit(100)), active(s => { logs = s.docs.map(d => d.data()); renderHistory(); }), error));
+          let stopHistory = null, historyVersion = 0;
+          function subscribeHistory() {
+            const requestVersion = ++historyVersion;
+            stopHistory?.(); historyLoading = true; renderHistory();
+            stopHistory = dbSDK.onSnapshot(dbSDK.query(dbSDK.collection(db,'events'),dbSDK.orderBy('at','desc'),dbSDK.limit(historyLimit)),active(s => {
+              if (requestVersion !== historyVersion) return;
+              logs = s.docs.map(d => ({...d.data(),id:d.id})); historyHasMore = s.docs.length === historyLimit; historyLoading = false; renderHistory();
+            }),e => { if (requestVersion !== historyVersion) return; historyLoading = false; renderHistory(); error(e); });
+          }
+          dataSubscriptions.push(() => { historyVersion++; stopHistory?.(); });
+          historyLoader = () => { if (!historyHasMore || historyLoading) return; historyLimit += 100; subscribeHistory(); };
+          subscribeHistory();
           if (profile.role === 'admin') dataSubscriptions.push(dbSDK.onSnapshot(dbSDK.collection(db,'users'), s => {
             if (version !== authVersion || profile?.role !== 'admin') return;
             accessUsers = s.docs.map(d => ({...d.data(),id:d.id})); renderAccess(); teamManagement.refresh();
+          },error));
+          if (profile.role === 'admin') dataSubscriptions.push(dbSDK.onSnapshot(dbSDK.collection(db,'duplicateReviews'),s => {
+            if (version !== authVersion || profile?.role !== 'admin') return;
+            reviews = s.docs.map(d => d.data()); duplicates.refresh();
           },error));
           render();
         },error));

@@ -9,6 +9,7 @@ service cloud.firestore {
     function teamCatalog() { return exists(/databases/$(database)/documents/settings/teams) ? get(/databases/$(database)/documents/settings/teams).data.items : defaultTeams(); }
     function teamActive(id) { let items = teamCatalog(); return id in items && items[id].status == 'active'; }
     function active(p) { return !('mergedInto' in p) && p.get('status','active') == 'active'; }
+    function playerAction(p) { return getAfter(/databases/$(database)/documents/events/$(p.lastEvent)).data.kind; }
     function normalized(s) {
       return s.lower().replace('[àáâãäå]', 'a').replace('[èéêë]', 'e')
         .replace('[ìíîï]', 'i').replace('[òóôõö]', 'o').replace('[ùúûü]', 'u')
@@ -76,7 +77,8 @@ service cloud.firestore {
       let old = get(/databases/$(database)/documents/players/$(e.playerId)).data;
       let p = getAfter(/databases/$(database)/documents/players/$(e.playerId)).data;
       return admin() && e.kind == 'status' && e.actor == request.auth.uid && e.at == request.time
-        && e.keys().hasOnly(['actor','at','kind','playerId','name','previousStatus','status','detail'])
+        && e.keys().hasOnly(['actor','at','kind','playerId','name','previousStatus','status','detail','teams'])
+        && e.get('teams',old.teams) == old.teams
         && !('mergedInto' in old) && validPlayer(e.playerId,p)
         && e.name == old.name && e.previousStatus == old.get('status','active')
         && e.status == p.status && e.status != e.previousStatus
@@ -90,7 +92,8 @@ service cloud.firestore {
       let p = getAfter(/databases/$(database)/documents/players/$(e.playerId)).data;
       let archived = getAfter(/databases/$(database)/documents/players/$(e.sourceId)).data;
       return admin() && e.kind == 'edit' && e.actor == request.auth.uid && e.at == request.time
-        && e.keys().hasOnly(['actor','at','kind','sourceId','playerId','name','congregation','previousName','previousCongregation','detail'])
+        && e.keys().hasOnly(['actor','at','kind','sourceId','playerId','name','congregation','previousName','previousCongregation','detail','teams'])
+        && e.get('teams',old.teams) == old.teams
         && !('mergedInto' in old) && old.get('status','active') != 'deleted'
         && validPlayer(e.playerId,p) && e.name == p.name && e.congregation == p.congregation
         && e.previousName == old.name && e.previousCongregation == old.congregation
@@ -125,6 +128,28 @@ service cloud.firestore {
             && next.diff(old[e.teamId]).affectedKeys().hasOnly(['status'])))
         && e.detail is string && e.detail.size() <= 1000;
     }
+    function validDuplicateReview(reviewId) {
+      let r = getAfter(/databases/$(database)/documents/duplicateReviews/$(reviewId)).data;
+      let source = get(/databases/$(database)/documents/players/$(r.sourceId)).data;
+      let target = get(/databases/$(database)/documents/players/$(r.targetId)).data;
+      let e = getAfter(/databases/$(database)/documents/events/$(r.lastEvent)).data;
+      return admin() && r.keys().hasAll(['sourceId','targetId','sourceName','targetName','sourceCongregation','targetCongregation','different','actor','updatedAt','lastEvent'])
+        && r.keys().hasOnly(['sourceId','targetId','sourceName','targetName','sourceCongregation','targetCongregation','different','actor','updatedAt','lastEvent'])
+        && r.sourceId.matches('[a-f0-9]{64}') && r.targetId.matches('[a-f0-9]{64}') && r.sourceId < r.targetId
+        && reviewId == r.sourceId + '_' + r.targetId && active(source) && active(target)
+        && r.sourceName == source.name && r.targetName == target.name
+        && r.sourceCongregation == source.congregation && r.targetCongregation == target.congregation
+        && r.different is bool && r.actor == request.auth.uid && r.updatedAt == request.time
+        && e.keys().hasOnly(['actor','at','kind','reviewId','name','different','detail','teams'])
+        && (!('teams' in e) || (e.teams is list && e.teams.toSet() == source.teams.toSet().union(target.teams.toSet())))
+        && e.kind == 'duplicateReview' && e.reviewId == reviewId && e.actor == request.auth.uid && e.at == request.time
+        && e.name == source.name && e.different == r.different && e.detail is string && e.detail.size() <= 1000;
+    }
+    match /duplicateReviews/{id} {
+      allow read: if admin();
+      allow create, update: if admin() && validDuplicateReview(id);
+      allow delete: if false;
+    }
     match /users/{uid} {
       allow get: if request.auth != null && (request.auth.uid == uid || admin());
       allow list: if admin();
@@ -150,22 +175,22 @@ service cloud.firestore {
     }
     match /players/{id} {
       allow read: if member();
-      allow create: if member() && validPlayer(id, request.resource.data)
+      allow create: if member() && playerAction(request.resource.data) == 'add' && validPlayer(id, request.resource.data)
         && active(request.resource.data)
         && request.resource.data.teams.size() == 1 && manages(request.resource.data.teams[0]) && teamActive(request.resource.data.teams[0])
         && playerEvent(id, request.resource.data, 'add', '', request.resource.data.teams[0]);
-      allow create: if admin() && validEdit(request.resource.data.lastEvent)
+      allow create: if admin() && playerAction(request.resource.data) == 'edit' && validEdit(request.resource.data.lastEvent)
         && id == getAfter(/databases/$(database)/documents/events/$(request.resource.data.lastEvent)).data.playerId;
-      allow update: if member() && active(resource.data) && validPlayer(id, request.resource.data)
+      allow update: if member() && playerAction(request.resource.data) in ['add','transfer'] && active(resource.data) && validPlayer(id, request.resource.data)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['teams','updatedAt','lastEvent'])
         && request.resource.data.lastEvent != resource.data.lastEvent
         && (addition(id, resource.data, request.resource.data) || transfer(id, resource.data, request.resource.data));
-      allow update: if admin() && validMerge(request.resource.data.lastEvent)
+      allow update: if admin() && playerAction(request.resource.data) == 'merge' && validMerge(request.resource.data.lastEvent)
         && (id == getAfter(/databases/$(database)/documents/events/$(request.resource.data.lastEvent)).data.sourceId
           || id == getAfter(/databases/$(database)/documents/events/$(request.resource.data.lastEvent)).data.targetId);
-      allow update: if admin() && validStatus(request.resource.data.lastEvent)
+      allow update: if admin() && playerAction(request.resource.data) == 'status' && validStatus(request.resource.data.lastEvent)
         && id == getAfter(/databases/$(database)/documents/events/$(request.resource.data.lastEvent)).data.playerId;
-      allow update: if admin() && validEdit(request.resource.data.lastEvent)
+      allow update: if admin() && playerAction(request.resource.data) == 'edit' && validEdit(request.resource.data.lastEvent)
         && (id == getAfter(/databases/$(database)/documents/events/$(request.resource.data.lastEvent)).data.playerId
           || id == getAfter(/databases/$(database)/documents/events/$(request.resource.data.lastEvent)).data.sourceId);
       allow delete: if false;
@@ -191,6 +216,8 @@ service cloud.firestore {
       allow create: if member() && request.resource.data.actor == request.auth.uid
         && request.resource.data.at == request.time && (
           (request.resource.data.kind == 'merge' && validMerge(id))
+          || (request.resource.data.kind == 'duplicateReview' && validDuplicateReview(request.resource.data.reviewId)
+            && getAfter(/databases/$(database)/documents/duplicateReviews/$(request.resource.data.reviewId)).data.lastEvent == id)
           || (request.resource.data.kind == 'team' && validTeamEvent(id))
           || (request.resource.data.kind == 'status' && validStatus(id))
           || (request.resource.data.kind == 'edit' && validEdit(id))

@@ -1,6 +1,6 @@
 import {playerSuggestions,duplicatePairs,mergedTeams,playerStatus,isActivePlayer} from './domain.js';
 
-export function setupDuplicates({element,getPlayers,isAdmin,openAdd,mutate,toast,teamName = id => id}) {
+export function setupDuplicates({element,getPlayers,getReviews = () => [],isAdmin,openAdd,mutate,toast,teamName = id => id}) {
   const form = document.querySelector('#player-form');
   const name = form.elements.name, congregation = form.elements.congregation;
   const suggestions = element('div',null,'player-suggestions');
@@ -44,6 +44,26 @@ export function setupDuplicates({element,getPlayers,isAdmin,openAdd,mutate,toast
   }
   const review = document.querySelector('#duplicates-page');
   const list = document.querySelector('#duplicates-list');
+  const reviewFilter = element('select'); reviewFilter.setAttribute('aria-label','Filtrar revisões de duplicidade');
+  for (const [value,label] of [['pending','Pendentes'],['completed','Pessoas diferentes · concluídas']]) { const option = element('option',label); option.value = value; reviewFilter.append(option); }
+  const filters = element('div',null,'filters'); filters.append(reviewFilter); list.before(filters); reviewFilter.onchange = renderReview;
+  const decision = dialog('Confirmar pessoas diferentes'), decisionForm = element('form'); decision.append(decisionForm);
+  function prepareDecision(source,target) {
+    decisionForm.replaceChildren();
+    for (const player of [source,target]) decisionForm.append(element('strong',player.name),element('p',`${player.congregation} · ${player.teams.map(teamName).join(', ')}`));
+    const ack = element('label',null,'duplicate-ack'), confirm = element('input'); confirm.type = 'checkbox'; confirm.required = true;
+    ack.append(confirm,element('span','Conferi e confirmo que são duas pessoas diferentes. Este par sairá das revisões pendentes.'));
+    const error = element('p',null,'form-error'); error.setAttribute('role','alert');
+    const save = element('button','Salvar revisão','primary submit'); save.type = 'submit'; decisionForm.append(ack,error,save);
+    decisionForm.onsubmit = async event => {
+      event.preventDefault(); if (!confirm.checked || !isAdmin()) return;
+      save.disabled = true; error.textContent = '';
+      try { await mutate('reviewDuplicates',{sourceId:source.id,targetId:target.id,different:true}); decision.close(); toast('Revisão concluída. Você pode reabrir pelo filtro de concluídas.'); }
+      catch(e) { error.textContent = e.message; }
+      finally { save.disabled = false; }
+    };
+    decision.showModal();
+  }
   const merge = dialog('Confirmar unificação');
   const mergeForm = element('form'); merge.append(mergeForm);
   let selectedPair = null;
@@ -82,19 +102,29 @@ export function setupDuplicates({element,getPlayers,isAdmin,openAdd,mutate,toast
     if (!merge.open) merge.showModal();
   }
   function renderReview() {
-    const pairs = duplicatePairs(getPlayers()); list.replaceChildren();
-    if (!pairs.length) list.append(element('p','Nenhuma possível duplicidade encontrada.'));
-    for (const {source,target} of pairs) {
+    const pairs = duplicatePairs(getPlayers(),getReviews()).filter(pair => pair.reviewed === (reviewFilter.value === 'completed')); list.replaceChildren();
+    if (!pairs.length) list.append(element('p',reviewFilter.value === 'completed' ? 'Nenhuma revisão concluída para os cadastros atuais.' : 'Nenhuma possível duplicidade pendente.'));
+    for (const {source,target,reviewed} of pairs) {
       const card = element('div',null,'duplicate-card');
       for (const player of [source,target]) card.append(element('strong',player.name),element('p',`${player.congregation} · Times: ${player.teams.map(teamName).join(', ')}`));
-      const inspect = element('button','Conferir e unificar','row-action'); inspect.onclick = () => prepareMerge(source,target); card.append(inspect); list.append(card);
+      if (reviewed) {
+        card.append(element('p','Revisado: são pessoas diferentes.'));
+        const reopen = element('button','Reabrir revisão','row-action'), feedback = element('p',null,'form-error'); feedback.setAttribute('role','status');
+        reopen.onclick = async () => { reopen.disabled = true; try { await mutate('reviewDuplicates',{sourceId:source.id,targetId:target.id,different:false}); toast('Revisão reaberta.'); } catch(e) { feedback.textContent = e.message; } finally { reopen.disabled = false; } };
+        card.append(reopen,feedback);
+      } else {
+        const inspect = element('button','Conferir e unificar','row-action'); inspect.onclick = () => prepareMerge(source,target);
+        const different = element('button','São pessoas diferentes','row-action'); different.onclick = () => prepareDecision(source,target); card.append(inspect,different);
+      }
+      list.append(card);
     }
   }
   return {
     refresh() {
       button.hidden = !isAdmin();
+      filters.hidden = !isAdmin();
       document.querySelector('#duplicates-restricted').hidden = isAdmin();
-      if (!isAdmin()) { list.replaceChildren(); merge.close(); }
+      if (!isAdmin()) { list.replaceChildren(); merge.close(); decision.close(); }
       else if (!review.hidden) renderReview();
       if (merge.open && selectedPair && [selectedPair.source,selectedPair.target].some(p => !getPlayers().some(current => current.id === p.id))) merge.close();
       if (form.closest('dialog').open) suggest();

@@ -1,0 +1,68 @@
+import {readFile} from 'node:fs/promises';
+import {createRequire} from 'node:module';
+import {playerId} from '../public/domain.js';
+import {DEFAULT_TEAMS} from '../public/teams.js';
+const require = createRequire(import.meta.url);
+const auth = require('firebase-tools/lib/auth');
+const {Client} = require('firebase-tools/lib/apiv2');
+auth.setActiveAccount({},auth.getGlobalDefaultAccount());
+const oldId = await playerId('17. Jogador Teste','Santa Clara – Vespasiano');
+const newId = await playerId('Jogador Teste','Santa Clara – Vespasiano');
+const before = {name:'17. Jogador Teste',congregation:'Santa Clara – Vespasiano',teams:['VETOR NORTE'],updatedAt:1,lastEvent:'previous'};
+const after = {...before,name:'Jogador Teste',updatedAt:1000,lastEvent:'edit-event'};
+const archived = {...before,teams:[],mergedInto:newId,updatedAt:1000,lastEvent:'edit-event'};
+const event = {actor:'admin-test',at:1000,kind:'edit',playerId:newId,sourceId:oldId,name:after.name,congregation:after.congregation,previousName:before.name,previousCongregation:before.congregation,detail:'Edição de teste'};
+const path = suffix => '/databases/(default)/documents/'+suffix;
+const mock = (fn,suffix,value) => ({function:fn,args:[{exactValue:path(suffix)}],result:{value}});
+const mocks = [
+  mock('get','users/admin-test',{data:{role:'admin'}}),
+  mock('get','players/'+oldId,{data:before}),
+  mock('getAfter','players/'+oldId,{data:archived}),
+  mock('getAfter','players/'+newId,{data:after}),
+  mock('getAfter','events/edit-event',{data:event}),
+  mock('exists','players/'+newId,false),
+  mock('exists','settings/teams',false)
+];
+const cases = [['players/'+oldId,'update',archived,before],['players/'+newId,'create',after,null],['events/edit-event','create',event,null]].map(([suffix,method,data,old]) => ({expectation:'ALLOW',request:{auth:{uid:'admin-test'},path:path(suffix),method,resource:{data}},...(old ? {resource:{data:old}} : {}),functionMocks:mocks,expressionReportLevel:'FULL'}));
+const labels = ['admin: arquiva identidade antiga','admin: cria identidade corrigida','admin: grava histórico'];
+function addCases(label,expectation,transform) {
+  for (let i=0;i<3;i++) {
+    const testCase = structuredClone(cases[i]); testCase.expectation = expectation;
+    transform(testCase,i); cases.push(testCase); labels.push(`${label}: ${labels[i]}`);
+  }
+}
+addCases('diretor bloqueado','DENY',testCase => {
+  testCase.functionMocks.find(m => m.function === 'get' && m.args[0].exactValue === path('users/admin-test')).result.value.data = {role:'director',team:'VETOR NORTE'};
+});
+addCases('edição não pode trocar times','DENY',(testCase,index) => {
+  const changed = {...after,teams:['BLUES']};
+  testCase.functionMocks.find(m => m.function === 'getAfter' && m.args[0].exactValue === path('players/'+newId)).result.value.data = changed;
+  if (index === 1) testCase.request.resource.data = changed;
+});
+addCases('catálogo já cadastrado','ALLOW',testCase => {
+  testCase.functionMocks.find(m => m.function === 'exists' && m.args[0].exactValue === path('settings/teams')).result.value = true;
+  testCase.functionMocks.push(mock('get','settings/teams',{data:{items:DEFAULT_TEAMS}}));
+});
+addCases('não sobrescreve outro cadastro','DENY',testCase => {
+  testCase.functionMocks.find(m => m.function === 'exists' && m.args[0].exactValue === path('players/'+newId)).result.value = true;
+});
+addCases('edição guarda os times do momento','ALLOW',(testCase,index) => {
+  const changed = {...event,teams:before.teams};
+  testCase.functionMocks.find(m => m.function === 'getAfter' && m.args[0].exactValue === path('events/edit-event')).result.value.data = changed;
+  if (index === 2) testCase.request.resource.data = changed;
+});
+addCases('histórico não pode forjar times','DENY',(testCase,index) => {
+  const changed = {...event,teams:['BLUES']};
+  testCase.functionMocks.find(m => m.function === 'getAfter' && m.args[0].exactValue === path('events/edit-event')).result.value.data = changed;
+  if (index === 2) testCase.request.resource.data = changed;
+});
+// Use a fixed scalar in fixtures to isolate rule logic from Timestamp encoding.
+const content = (await readFile('firestore.rules','utf8')).replaceAll('request.time','1000');
+const client = new Client({urlPrefix:'https://firebaserules.googleapis.com',apiVersion:'v1'});
+const {body} = await client.post('/projects/recreacao-17154:test',{source:{files:[{name:'firestore.rules',content}]},testSuite:{testCases:cases}},{skipLog:{body:true,resBody:true}});
+for (let i=0;i<(body.testResults || []).length;i++) {
+  const result = body.testResults[i];
+  console.log(JSON.stringify({test:labels[i],status:result.state,errors:result.errorMessages,reports:result.debugMessages}));
+}
+if (body.issues?.length) console.log(JSON.stringify(body.issues));
+if (body.testResults?.length !== cases.length || body.testResults.some(r => r.state !== 'SUCCESS')) process.exitCode = 1;

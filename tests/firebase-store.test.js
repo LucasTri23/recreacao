@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createFirebaseApi,ensureAccessProfile} from '../public/firebase-store.js';
-import {playerId} from '../public/domain.js';
+import {playerId,reviewKey} from '../public/domain.js';
 import {DEFAULT_TEAMS} from '../public/teams.js';
 
 function setup(profile, seed = {}) {
@@ -273,4 +273,28 @@ test('diretor do time novo só inscreve no próprio time e limite de dois times 
   const admin = setup({role:'admin'},Object.fromEntries([...records].filter(([key]) => key !== 'users/director')));
   await admin.api('addPlayer',{name:'João Silva',congregation:'Centro',team:'BRANCO'});
   await assert.rejects(admin.api('addPlayer',{name:'João Silva',congregation:'Centro',team:'BLUES'}),/dois times/);
+});
+
+test('admin conclui e reabre revisão, com identidade e histórico, preservando jogadores', async () => {
+  const {api,records,sourceId,targetId} = await mergeFixture();
+  const before = [records.get(`players/${sourceId}`),records.get(`players/${targetId}`)];
+  await api('reviewDuplicates',{sourceId:targetId,targetId:sourceId,different:true});
+  const key = reviewKey(sourceId,targetId), review = records.get(`duplicateReviews/${key}`);
+  assert.equal(review.different,true); assert.ok(review.sourceId < review.targetId);
+  assert.equal(review.sourceName,records.get(`players/${review.sourceId}`).name);
+  assert.equal(records.get(`events/${review.lastEvent}`).reviewId,key);
+  await api('reviewDuplicates',{sourceId,targetId,different:false});
+  const reopened = records.get(`duplicateReviews/${key}`);
+  assert.equal(reopened.different,false); assert.notEqual(reopened.lastEvent,review.lastEvent);
+  assert.deepEqual([records.get(`players/${sourceId}`),records.get(`players/${targetId}`)],before);
+});
+test('diretor não conclui revisão e pares inválidos ou inativos não gravam', async () => {
+  const director = await mergeFixture({role:'director',team:'VERDE'});
+  await assert.rejects(director.api('reviewDuplicates',{...director,different:true}),/administração/);
+  const admin = await mergeFixture(); const before = JSON.stringify([...admin.records]);
+  await assert.rejects(admin.api('reviewDuplicates',{sourceId:admin.sourceId,targetId:admin.sourceId,different:true}),/inválida/);
+  await assert.rejects(admin.api('reviewDuplicates',{...admin,different:'true'}),/inválida/);
+  assert.equal(JSON.stringify([...admin.records]),before);
+  await admin.api('setPlayerStatus',{id:admin.sourceId,status:'inactive'});
+  await assert.rejects(admin.api('reviewDuplicates',{...admin,different:true}),/inativos/);
 });

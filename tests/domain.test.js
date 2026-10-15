@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {identity,membership,playerId,playerSuggestions,duplicatePairs,mergedTeams} from '../public/domain.js';
+import {identity,membership,playerId,playerSuggestions,duplicatePairs,mergedTeams,reviewKey} from '../public/domain.js';
 test('nome e congregação ignoram acentos, caixa e espaços', async () => {
   assert.equal(identity('  João   Silva ', ' Belém '), identity('joao silva','belem'));
   assert.equal(await playerId('João Silva','Belém'), await playerId('joao silva','belem'));
@@ -30,4 +30,13 @@ test('transferência substitui apenas o time de origem', () => {
   assert.deepEqual(membership({teams:['BRANCO','VERDE']},'BRANCO','BLUES'),['BLUES','VERDE']);
   assert.throws(() => membership({teams:['BRANCO','VERDE']},'BRANCO','VERDE'),/destino/);
   assert.throws(() => membership({teams:['BRANCO']},'PRETO','VERDE'),/origem/);
+});
+
+test('revisão concluída vale para o par nas duas ordens e reabre após mudança de identidade', () => {
+  const a = {id:'a',name:'João Silva',congregation:'Centro',teams:['VERDE']}, b = {id:'b',name:'Joao da Silva',congregation:'Norte',teams:['BRANCO']};
+  const review = {sourceId:'a',targetId:'b',sourceName:a.name,targetName:b.name,sourceCongregation:a.congregation,targetCongregation:b.congregation,different:true};
+  assert.equal(reviewKey('a','b'),reviewKey('b','a'));
+  assert.equal(duplicatePairs([b,a],[review])[0].reviewed,true);
+  assert.equal(duplicatePairs([a,{...b,congregation:'Sul'}],[review])[0].reviewed,false);
+  assert.equal(duplicatePairs([a,b],[{...review,different:false}])[0].reviewed,false);
 });
