@@ -20,7 +20,7 @@ function setup(profile, seed = {}) {
   return {api:createFirebaseApi(sdk, {}, {currentUser:{uid:'director'}}), records, sdk};
 }
 test('inscrição persiste jogador e histórico juntos e rejeita outro time', async () => {
-  const {api,records} = setup({role:'director',team:'VERDE'});
+  const {api,records} = setup({role:'director',team:'VERDE',displayName:'João Diretor'});
   await assert.rejects(api('addPlayer',{name:'João Silva',congregation:'Centro',team:'BLUES'}),/próprio time/);
   assert.equal(records.size,1);
   await api('addPlayer',{name:'João Silva',congregation:'Centro',team:'VERDE'});
@@ -28,6 +28,8 @@ test('inscrição persiste jogador e histórico juntos e rejeita outro time', as
   const player = records.get(`players/${id}`);
   assert.deepEqual(player.teams,['VERDE']);
   assert.equal(records.get(`events/${player.lastEvent}`).playerId,id);
+  assert.equal(records.get(`events/${player.lastEvent}`).actorName,'João Diretor');
+  assert.equal(records.get(`events/${player.lastEvent}`).actor,'director');
 });
 test('primeiro login solicita acesso sem escolher time ou se promover', async () => {
   const {sdk,records} = setup({role:'admin'});

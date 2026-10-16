@@ -1,6 +1,13 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {filterHistory,eventTeamIds,eventTime} from '../public/history.js';
+import {filterHistory,eventTeamIds,eventTime,eventAuthor} from '../public/history.js';
+test('histórico preserva nome registrado e identifica contas antigas sem inventar responsáveis',() => {
+  const users = [{id:'a',displayName:'Nome atual'}];
+  assert.equal(eventAuthor({actor:'a',actorName:'Nome na alteração'},users),'Nome na alteração');
+  assert.equal(eventAuthor({actor:'a'},users),'Nome atual');
+  assert.match(eventAuthor({actor:'ausente'},users),/não identificado/);
+  assert.match(eventAuthor({}),/não registrado/);
+});
 const teams = {VERDE:{name:'ESMERALDA'},BLUES:{name:'AZUL'}};
 const players = [{id:'old',mergedInto:'new',teams:[]},{id:'new',name:'João Corrigido',teams:['BLUES']}];
 const logs = [

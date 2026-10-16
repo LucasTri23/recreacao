@@ -1,5 +1,6 @@
 import { membership, playerId, mergedTeams, playerDetails, isActivePlayer, playerStatus, reviewKey } from './domain.js';
 import {DEFAULT_TEAMS,changeTeam,teamActive} from './teams.js';
+import {standardCongregation} from './congregations.js';
 export async function ensureAccessProfile(sdk, db, user) {
   const ref = sdk.doc(db, 'users', user.uid);
   let existingProfile = null;
@@ -20,9 +21,10 @@ export async function ensureAccessProfile(sdk, db, user) {
     throw error;
   }
 }
-export function createFirebaseApi(sdk, db, auth) {
+export function createFirebaseApi(sdk, db, auth, getCongregations = () => []) {
   const { doc, collection, runTransaction, serverTimestamp } = sdk;
   return async (action, data) => {
+    if (['addPlayer','editPlayer'].includes(action)) data = {...data,congregation:standardCongregation(data.congregation,getCongregations())};
     if (!auth.currentUser) throw Error('Entre com sua conta.');
     const uid = auth.currentUser.uid;
     const eventRef = doc(collection(db, 'events'));
@@ -32,7 +34,7 @@ export function createFirebaseApi(sdk, db, auth) {
         const profile = (await tx.get(doc(db, 'users', uid))).data();
         if (!['admin','director'].includes(profile?.role)) throw Error('Conta sem autorização.');
         const allowed = team => profile.role === 'admin' || profile.team === team;
-        const event = { actor:uid, at:serverTimestamp() };
+        const event = { actor:uid, actorName:profile.displayName ?? profile.email ?? 'Diretor', at:serverTimestamp() };
         if (action === 'reviewDuplicates') {
           if (profile.role !== 'admin') throw Error('Apenas a administração pode concluir revisões.');
           if (![data.sourceId,data.targetId].every(id => typeof id === 'string' && /^[a-f0-9]{64}$/.test(id)) || data.sourceId === data.targetId || typeof data.different !== 'boolean') throw Error('Revisão inválida.');

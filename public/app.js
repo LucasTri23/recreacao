@@ -7,7 +7,10 @@ import { DEFAULT_TEAMS,TEAM_COLORS,changeTeam,teamActive } from './teams.js';
 import { setupTeamManagement } from './team-management.js';
 import { setupRoster } from './roster.js';
 import { setupHistory } from './history.js';
+import {setupCongregations,congregationOptions,standardCongregation} from './congregations.js';
 const $ = s => document.querySelector(s);
+const mobileActions = window.matchMedia('(max-width:700px)');
+mobileActions.addEventListener('change',() => renderPlayers());
 let teamCatalog = structuredClone(DEFAULT_TEAMS);
 const teamIds = (activeOnly = false) => Object.keys(teamCatalog).filter(id => !activeOnly || teamActive(teamCatalog,id));
 const teamName = id => teamCatalog[id]?.name || id;
@@ -21,7 +24,8 @@ const duplicates = setupDuplicates({element,getPlayers:() => players,getReviews:
 const management = setupPlayerManagement({element,isAdmin:() => demo || profile?.role === 'admin',getPlayers:() => players,mutate,toast,teamName});
 const teamManagement = setupTeamManagement({element,isAdmin:() => demo || profile?.role === 'admin',getTeams:() => teamCatalog,getPlayers:() => players,getUsers:() => accessUsers,mutate,toast});
 const roster = setupRoster({element,getPlayers:() => players,getTeams:() => teamCatalog,canExport:() => playersReady && teamsReady && (demo || ['admin','director'].includes(profile?.role)),toast});
-const history = setupHistory({element,getLogs:() => logs,getTeams:() => teamCatalog,getPlayers:() => [...players,...archivedPlayers],canRead:() => demo || ['admin','director'].includes(profile?.role),canLoadMore:() => historyHasMore,isLoading:() => historyLoading,loadMore:() => historyLoader?.()});
+const history = setupHistory({element,getLogs:() => logs,getTeams:() => teamCatalog,getPlayers:() => [...players,...archivedPlayers],getUsers:() => accessUsers,canRead:() => demo || ['admin','director'].includes(profile?.role),canLoadMore:() => historyHasMore,isLoading:() => historyLoading,loadMore:() => historyLoader?.()});
+setupCongregations({element,getPlayers:() => [...players,...archivedPlayers]});
 const statusFilter = element('select'); statusFilter.id = 'status-filter'; statusFilter.setAttribute('aria-label','Filtrar situação do jogador');
 for (const [value,label] of [['active','Ativos'],['inactive','Inativos'],['deleted','Excluídos'],['all','Todas as situações']]) { const option = element('option',label); option.value = value; statusFilter.append(option); }
 $('#team-filter').after(statusFilter); statusFilter.onchange = renderPlayers;
@@ -107,7 +111,7 @@ function render() {
     card.onclick = () => { $('#team-filter').value = team; statusFilter.value = 'active'; $('#search').value = ''; filter = 'all'; document.querySelectorAll('[data-filter]').forEach(b => b.classList.toggle('selected',b.dataset.filter === 'all')); renderPlayers(); location.hash = '/jogadores'; }; return card;
   }));
   if (!teamIds(true).length) $('#team-grid').append(element('p','Nenhum time ativo. A administração pode criar ou reativar times em Gerenciar times.'));
-  $('#congregations').replaceChildren(...[...new Set(players.map(p => p.congregation))].sort().map(c => { const o = element('option'); o.value = c; return o; }));
+  $('#congregations').replaceChildren(...congregationOptions([...players,...archivedPlayers]).map(c => { const o = element('option'); o.value = c; return o; }));
   renderPlayers();
   duplicates.refresh();
   renderHistory();
@@ -129,6 +133,13 @@ function renderPlayers() {
     if (isActivePlayer(p) && p.teams.length < 2 && teamIds(true).some(t => allowed(t) && !p.teams.includes(t))) { const b = element('button', 'Adicionar a outro time ＋', 'row-action'); b.onclick = () => openAdd(p); actions.append(b); }
     if (isActivePlayer(p) && windowOpen && p.teams.some(allowed) && teamIds(true).some(t => !p.teams.includes(t))) { const b = element('button', 'Transferir ↔', 'row-action'); b.onclick = () => openTransfer(p); actions.append(b); }
     if (demo || profile?.role === 'admin') actions.append(...management.actions(p));
+    if (mobileActions.matches && actions.children.length) {
+      const menu = element('details',null,'player-actions');
+      const summary = element('summary','Ações'); summary.setAttribute('aria-label',`Ações para ${playerName(p.name)}`);
+      const items = element('div',null,'player-action-items'); items.append(...actions.children);
+      items.addEventListener('click',event => { if (event.target.closest('button')) menu.open = false; });
+      menu.append(summary,items); actions.append(menu);
+    }
     row.append(name, element('td', p.congregation), teams, status, actions);
     [...row.children].forEach((cell,index) => cell.dataset.label = ['Jogador','Congregação','Times','Inscrição','Ações'][index]);
     return row;
@@ -153,6 +164,7 @@ function openTransfer(p) {
 }
 function saveDemo() { localStorage.setItem('recreacao-demo-v1', JSON.stringify({ players, archivedPlayers, logs, windowOpen,teamCatalog,reviews })); render(); }
 async function mutate(action, data) {
+  if (['addPlayer','editPlayer'].includes(action)) data = {...data,congregation:standardCongregation(data.congregation,congregationOptions([...players,...archivedPlayers]))};
   if (!demo) { await api(action, data); return; }
   if (action === 'reviewDuplicates') {
     const [sourceId,targetId] = [data.sourceId,data.targetId].sort();
@@ -241,7 +253,7 @@ if (demo) {
     const [appSDK, authSDK, dbSDK] = await Promise.all(['firebase-app.js','firebase-auth.js','firebase-firestore.js'].map(p => import(base + p)));
     const app = appSDK.initializeApp(firebaseConfig), auth = authSDK.getAuth(app), db = dbSDK.getFirestore(app);
     const { createFirebaseApi, ensureAccessProfile } = await import('./firebase-store.js');
-    api = createFirebaseApi(dbSDK, db, auth);
+    api = createFirebaseApi(dbSDK, db, auth,() => congregationOptions([...players,...archivedPlayers]));
     $('#login').onclick = async () => { try { if (auth.currentUser) await authSDK.signOut(auth); else await authSDK.signInWithPopup(auth, new authSDK.GoogleAuthProvider()); } catch(e) { toast(e.message); } };
     let unsubscribers = [], dataSubscriptions = [], authVersion = 0;
     authSDK.onAuthStateChanged(auth, async current => {
@@ -282,7 +294,7 @@ if (demo) {
           subscribeHistory();
           if (profile.role === 'admin') dataSubscriptions.push(dbSDK.onSnapshot(dbSDK.collection(db,'users'), s => {
             if (version !== authVersion || profile?.role !== 'admin') return;
-            accessUsers = s.docs.map(d => ({...d.data(),id:d.id})); renderAccess(); teamManagement.refresh();
+            accessUsers = s.docs.map(d => ({...d.data(),id:d.id})); renderAccess(); teamManagement.refresh(); history.refresh();
           },error));
           if (profile.role === 'admin') dataSubscriptions.push(dbSDK.onSnapshot(dbSDK.collection(db,'duplicateReviews'),s => {
             if (version !== authVersion || profile?.role !== 'admin') return;
