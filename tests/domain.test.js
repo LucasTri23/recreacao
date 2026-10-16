@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {identity,membership,playerId,playerSuggestions,duplicatePairs,mergedTeams,reviewKey,playerDetails} from '../public/domain.js';
 test('nome e congregação ignoram acentos, caixa e espaços', async () => {
-  assert.deepEqual(playerDetails({name:'  joão   da Silva ',congregation:' Centro '}),{name:'JOÃO DA SILVA',congregation:'Centro'});
+  assert.deepEqual(playerDetails({name:'  joão   da Silva ',congregation:' Centro '}),{name:'JOÃO DA SILVA',congregation:'CENTRO'});
   assert.equal(identity('  João   Silva ', ' Belém '), identity('joao silva','belem'));
   assert.equal(await playerId('João Silva','Belém'), await playerId('joao silva','belem'));
   assert.notEqual(await playerId('João Silva','Belém'), await playerId('João Silva','Centro'));

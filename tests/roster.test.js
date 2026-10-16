@@ -15,6 +15,7 @@ test('relação inclui ativos por time, ordena nomes e preserva a indicação do
   const all = rosterData(players,teams);
   assert.deepEqual(all.map(t => t.name),['AZUL','BRANCO']);
   assert.deepEqual(all[0].players.map(p => p.name),['ANA','ZECA']);
+  assert.equal(all[0].players[0].congregation,'NORTE');
   assert.deepEqual(all[1].players[0].teams,['AZUL','BRANCO']);
   assert.equal(rosterData(players,teams,'a').length,1);
   assert.equal(rosterData(players,teams,'c')[0].players[0].name,'CARLOS');

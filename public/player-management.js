@@ -12,7 +12,7 @@ export function setupPlayerManagement({element,isAdmin,getPlayers,mutate,toast,t
     form.replaceChildren(); form.oninput = null;
     const edit = action === 'edit', deleting = action === 'deleted';
     title.textContent = edit ? 'Editar jogador' : deleting ? 'Excluir jogador' : action === 'inactive' ? 'Inativar jogador' : playerStatus(player) === 'deleted' ? 'Restaurar jogador' : 'Ativar jogador';
-    form.append(element('p',`${playerName(player.name)} · ${player.congregation} · Times: ${player.teams.map(teamName).join(', ')}`));
+    form.append(element('p',`${playerName(player.name)} · ${playerName(player.congregation)} · Times: ${player.teams.map(teamName).join(', ')}`));
     if (edit) {
       for (const [key,label] of [['name','Nome completo'],['congregation','Congregação']]) {
         const field = element('label',label), input = element('input');
@@ -23,7 +23,7 @@ export function setupPlayerManagement({element,isAdmin,getPlayers,mutate,toast,t
       const suggestions = element('p'); suggestions.setAttribute('aria-live','polite');
       const suggest = () => {
         const matches = playerSuggestions(getPlayers().filter(p => p.id !== player.id),form.elements.name.value,form.elements.congregation.value);
-        suggestions.textContent = matches.length ? `Confira possíveis cadastros existentes: ${matches.map(({player:p}) => `${playerName(p.name)} (${p.congregation})`).join('; ')}.` : '';
+        suggestions.textContent = matches.length ? `Confira possíveis cadastros existentes: ${matches.map(({player:p}) => `${playerName(p.name)} (${playerName(p.congregation)})`).join('; ')}.` : '';
       };
       form.oninput = suggest;
       form.append(suggestions);

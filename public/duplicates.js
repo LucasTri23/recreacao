@@ -22,7 +22,7 @@ export function setupDuplicates({element,getPlayers,getReviews = () => [],isAdmi
     suggestions.append(element('strong','Possível cadastro existente. É a mesma pessoa?'));
     for (const {player} of candidates) {
       const card = element('div',null,'duplicate-card');
-      card.append(element('strong',playerName(player.name)),element('p',`${player.congregation} · Times: ${player.teams.map(teamName).join(', ')}`));
+      card.append(element('strong',playerName(player.name)),element('p',`${playerName(player.congregation)} · Times: ${player.teams.map(teamName).join(', ')}`));
       if (!isActivePlayer(player)) card.append(element('p',playerStatus(player) === 'deleted' ? 'Cadastro excluído: peça à administração para restaurá-lo.' : 'Jogador inativo: peça à administração para reativá-lo.'));
       const use = element('button','É a mesma pessoa · usar cadastro','row-action'); use.type = 'button';
       use.onclick = () => {
@@ -51,7 +51,7 @@ export function setupDuplicates({element,getPlayers,getReviews = () => [],isAdmi
   const decision = dialog('Confirmar pessoas diferentes'), decisionForm = element('form'); decision.append(decisionForm);
   function prepareDecision(source,target) {
     decisionForm.replaceChildren();
-    for (const player of [source,target]) decisionForm.append(element('strong',playerName(player.name)),element('p',`${player.congregation} · ${player.teams.map(teamName).join(', ')}`));
+    for (const player of [source,target]) decisionForm.append(element('strong',playerName(player.name)),element('p',`${playerName(player.congregation)} · ${player.teams.map(teamName).join(', ')}`));
     const ack = element('label',null,'duplicate-ack'), confirm = element('input'); confirm.type = 'checkbox'; confirm.required = true;
     ack.append(confirm,element('span','Conferi e confirmo que são duas pessoas diferentes. Este par sairá das revisões pendentes.'));
     const error = element('p',null,'form-error'); error.setAttribute('role','alert');
@@ -73,7 +73,7 @@ export function setupDuplicates({element,getPlayers,getReviews = () => [],isAdmi
     const label = element('label','Cadastro que será mantido');
     const select = element('select');
     for (const player of [target,source]) {
-      const option = element('option',`${playerName(player.name)} · ${player.congregation}`); option.value = player.id; select.append(option);
+      const option = element('option',`${playerName(player.name)} · ${playerName(player.congregation)}`); option.value = player.id; select.append(option);
     }
     label.append(select);
     const preview = element('div',null,'duplicate-card'), ack = element('label',null,'duplicate-ack');
@@ -84,7 +84,7 @@ export function setupDuplicates({element,getPlayers,getReviews = () => [],isAdmi
     function updatePreview() {
       confirmed.checked = false; preview.replaceChildren(); error.textContent = '';
       const keep = select.value === target.id ? target : source, archive = keep === target ? source : target;
-      preview.append(element('p',`Manter: ${playerName(keep.name)} · ${keep.congregation}`),element('p',`Unificar: ${playerName(archive.name)} · ${archive.congregation}`));
+      preview.append(element('p',`Manter: ${playerName(keep.name)} · ${playerName(keep.congregation)}`),element('p',`Unificar: ${playerName(archive.name)} · ${playerName(archive.congregation)}`));
       try { preview.append(element('strong',`Times após unificar: ${mergedTeams(archive,keep).map(teamName).join(', ')}`)); save.disabled = false; }
       catch(e) { error.textContent = e.message; save.disabled = true; }
       preview.append(element('p','O cadastro duplicado ficará arquivado. O histórico será preservado e novas inscrições pelo nome antigo usarão o cadastro mantido.'));
@@ -107,7 +107,7 @@ export function setupDuplicates({element,getPlayers,getReviews = () => [],isAdmi
     if (!pairs.length) list.append(element('p',reviewFilter.value === 'completed' ? 'Nenhuma revisão concluída para os cadastros atuais.' : 'Nenhuma possível duplicidade pendente.'));
     for (const {source,target,reviewed} of pairs) {
       const card = element('div',null,'duplicate-card');
-      for (const player of [source,target]) card.append(element('strong',playerName(player.name)),element('p',`${player.congregation} · Times: ${player.teams.map(teamName).join(', ')}`));
+      for (const player of [source,target]) card.append(element('strong',playerName(player.name)),element('p',`${playerName(player.congregation)} · Times: ${player.teams.map(teamName).join(', ')}`));
       if (reviewed) {
         card.append(element('p','Revisado: são pessoas diferentes.'));
         const reopen = element('button','Reabrir revisão','row-action'), feedback = element('p',null,'form-error'); feedback.setAttribute('role','status');

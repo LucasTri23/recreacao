@@ -140,7 +140,7 @@ function renderPlayers() {
       items.addEventListener('click',event => { if (event.target.closest('button')) menu.open = false; });
       menu.append(summary,items); actions.append(menu);
     }
-    row.append(name, element('td', p.congregation), teams, status, actions);
+    row.append(name, element('td', playerName(p.congregation)), teams, status, actions);
     [...row.children].forEach((cell,index) => cell.dataset.label = ['Jogador','Congregação','Times','Inscrição','Ações'][index]);
     return row;
   }));
@@ -159,7 +159,7 @@ function openAdd(player = null) {
   duplicates.suggest();
 }
 function openTransfer(p) {
-  transferring = p.id; $('#transfer-form .form-error').textContent = ''; $('#transfer-name').textContent = `${playerName(p.name)} · ${p.congregation}`;
+  transferring = p.id; $('#transfer-form .form-error').textContent = ''; $('#transfer-name').textContent = `${playerName(p.name)} · ${playerName(p.congregation)}`;
   options($('#transfer-form [name=from]'), p.teams.filter(allowed)); options($('#transfer-form [name=to]'), teamIds(true).filter(t => !p.teams.includes(t))); $('#transfer-dialog').showModal();
 }
 function saveDemo() { localStorage.setItem('recreacao-demo-v1', JSON.stringify({ players, archivedPlayers, logs, windowOpen,teamCatalog,reviews })); render(); }
@@ -202,7 +202,7 @@ async function mutate(action, data) {
       if (playerStatus(p) === 'deleted') throw Error('Restaure o jogador antes de editar.');
       const details = playerDetails(data), id = await playerId(details.name,details.congregation);
       if (id !== p.id && [...players,...archivedPlayers].some(other => other.id === id)) throw Error('Já existe um cadastro com esse nome e congregação. Use a revisão de duplicidades.');
-      logs.unshift({kind:'edit',playerId:id,sourceId:p.id,previousName:p.name,teams:[...p.teams],name:details.name,detail:`Cadastro editado: ${p.name} (${p.congregation}) → ${details.name} (${details.congregation}).`,at:Date.now()});
+      logs.unshift({kind:'edit',playerId:id,sourceId:p.id,previousName:p.name,teams:[...p.teams],name:details.name,detail:`Cadastro editado: ${p.name} (${playerName(p.congregation)}) → ${details.name} (${details.congregation}).`,at:Date.now()});
       if (id !== p.id) archivedPlayers.push({...p,teams:[],mergedInto:id});
       Object.assign(p,details,{id});
     }

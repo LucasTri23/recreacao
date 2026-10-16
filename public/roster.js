@@ -2,7 +2,7 @@ import {isActivePlayer,playerName} from './domain.js';
 
 export function rosterData(players,teams,selected = '') {
   const ids = selected ? Object.hasOwn(teams,selected) ? [selected] : [] : Object.keys(teams).filter(id => teams[id].status === 'active');
-  return ids.map(id => ({id,name:teams[id].name,status:teams[id].status,players:players.filter(p => isActivePlayer(p) && p.teams.includes(id)).sort((a,b) => a.name.localeCompare(b.name,'pt-BR')).map(p => ({name:playerName(p.name),congregation:p.congregation,teams:p.teams.map(t => teams[t]?.name || t)}))})).sort((a,b) => a.name.localeCompare(b.name,'pt-BR'));
+  return ids.map(id => ({id,name:teams[id].name,status:teams[id].status,players:players.filter(p => isActivePlayer(p) && p.teams.includes(id)).sort((a,b) => a.name.localeCompare(b.name,'pt-BR')).map(p => ({name:playerName(p.name),congregation:playerName(p.congregation),teams:p.teams.map(t => teams[t]?.name || t)}))})).sort((a,b) => a.name.localeCompare(b.name,'pt-BR'));
 }
 export function rosterCsv(roster,date = new Date()) {
   const cell = value => {
