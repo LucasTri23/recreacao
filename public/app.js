@@ -1,5 +1,5 @@
 import { firebaseConfig } from './firebase-config.js';
-import { identity, membership, playerId, mergedTeams, playerStatus, isActivePlayer, playerDetails,reviewKey } from './domain.js';
+import { identity, membership, playerId, mergedTeams, playerStatus, isActivePlayer, playerDetails,playerName,reviewKey } from './domain.js';
 import { setupDuplicates } from './duplicates.js';
 import { setupPages } from './pages.js';
 import { setupPlayerManagement } from './player-management.js';
@@ -123,7 +123,7 @@ function renderPlayers() {
   $('#empty-add').hidden = players.length > 0;
   $('#player-list').replaceChildren(...list.map(p => {
     const row = element('tr'); const name = element('td'); const person = element('div', null, 'person');
-    person.append(element('span', p.name.split(' ').filter(Boolean).slice(0,2).map(w => w[0]).join('').toUpperCase(), 'avatar'), element('span', p.name)); name.append(person);
+    person.append(element('span', p.name.split(' ').filter(Boolean).slice(0,2).map(w => w[0]).join('').toUpperCase(), 'avatar'), element('span', playerName(p.name))); name.append(person);
     const teams = element('td'); p.teams.forEach(t => { const tag = element('span',teamName(t) + (teamActive(teamCatalog,t) ? '' : ' · inativo/excluído'), 'tag'); tag.style.cssText = style(t); teams.append(tag); });
     const status = element('td', !isActivePlayer(p) ? playerStatus(p) === 'inactive' ? '● Inativo' : '● Excluído' : p.teams.length === 2 ? '● Dois times' : '● Um time', 'status'); const actions = element('td');
     if (isActivePlayer(p) && p.teams.length < 2 && teamIds(true).some(t => allowed(t) && !p.teams.includes(t))) { const b = element('button', 'Adicionar a outro time ＋', 'row-action'); b.onclick = () => openAdd(p); actions.append(b); }
@@ -148,7 +148,7 @@ function openAdd(player = null) {
   duplicates.suggest();
 }
 function openTransfer(p) {
-  transferring = p.id; $('#transfer-form .form-error').textContent = ''; $('#transfer-name').textContent = `${p.name} · ${p.congregation}`;
+  transferring = p.id; $('#transfer-form .form-error').textContent = ''; $('#transfer-name').textContent = `${playerName(p.name)} · ${p.congregation}`;
   options($('#transfer-form [name=from]'), p.teams.filter(allowed)); options($('#transfer-form [name=to]'), teamIds(true).filter(t => !p.teams.includes(t))); $('#transfer-dialog').showModal();
 }
 function saveDemo() { localStorage.setItem('recreacao-demo-v1', JSON.stringify({ players, archivedPlayers, logs, windowOpen,teamCatalog,reviews })); render(); }
@@ -178,7 +178,7 @@ async function mutate(action, data) {
     }
     const p = players.find(p => p.id === id);
     if (p && !isActivePlayer(p)) throw Error('Este jogador está inativo ou excluído. Reative o cadastro existente.');
-    if (p) p.teams = membership(p, data.team); else players.push({ id, name:data.name.trim().replace(/\s+/g,' '), congregation:data.congregation.trim().replace(/\s+/g,' '), teams:[data.team] });
+    if (p) p.teams = membership(p, data.team); else players.push({ id, ...playerDetails(data), teams:[data.team] });
     logs.unshift({kind:'add',playerId:id,to:data.team,name:data.name, detail:`Inscrição em ${teamName(data.team)}`, at:Date.now() });
   }
   if (action === 'editPlayer' || action === 'setPlayerStatus') {

@@ -14,10 +14,10 @@ const players = [
 test('relação inclui ativos por time, ordena nomes e preserva a indicação do segundo time', () => {
   const all = rosterData(players,teams);
   assert.deepEqual(all.map(t => t.name),['AZUL','BRANCO']);
-  assert.deepEqual(all[0].players.map(p => p.name),['Ana','Zeca']);
+  assert.deepEqual(all[0].players.map(p => p.name),['ANA','ZECA']);
   assert.deepEqual(all[1].players[0].teams,['AZUL','BRANCO']);
   assert.equal(rosterData(players,teams,'a').length,1);
-  assert.equal(rosterData(players,teams,'c')[0].players[0].name,'Carlos');
+  assert.equal(rosterData(players,teams,'c')[0].players[0].name,'CARLOS');
   assert.deepEqual(rosterData(players,teams,'missing'),[]);
 });
 test('CSV preserva acentos, escapa células e neutraliza fórmulas', () => {

@@ -1,8 +1,9 @@
 export const TEAMS = ['BRANCO','PRETO','BLUES','COIOTES','VETOR NORTE','AMARELO','LARANJA','VERDE'];
 export const playerStatus = player => player.status || 'active';
 export const isActivePlayer = player => !player.mergedInto && playerStatus(player) === 'active';
+export const playerName = name => String(name || '').toLocaleUpperCase('pt-BR');
 export function playerDetails(data) {
-  const name = String(data.name || '').trim().replace(/\s+/g,' '), congregation = String(data.congregation || '').trim().replace(/\s+/g,' ');
+  const name = playerName(data.name).trim().replace(/\s+/g,' '), congregation = String(data.congregation || '').trim().replace(/\s+/g,' ');
   if (name.length < 3 || name.length > 120 || congregation.length < 2 || congregation.length > 120 || /[|]/.test(name + congregation)) throw Error('Informe nome completo e congregação válidos (até 120 caracteres, sem |).');
   return {name,congregation};
 }
