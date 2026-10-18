@@ -57,7 +57,7 @@ addCases('histórico não pode forjar times','DENY',(testCase,index) => {
   if (index === 2) testCase.request.resource.data = changed;
 });
 // Use a fixed scalar in fixtures to isolate rule logic from Timestamp encoding.
-const content = (await readFile('firestore.rules','utf8')).replaceAll('request.time','1000');
+const content = (await readFile('firestore.rules','utf8')).replaceAll('request.time.toMillis()','1000').replaceAll('request.time','1000');
 const client = new Client({urlPrefix:'https://firebaserules.googleapis.com',apiVersion:'v1'});
 const {body} = await client.post('/projects/recreacao-17154:test',{source:{files:[{name:'firestore.rules',content}]},testSuite:{testCases:cases}},{skipLog:{body:true,resBody:true}});
 for (let i=0;i<(body.testResults || []).length;i++) {

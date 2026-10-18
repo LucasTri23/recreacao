@@ -1,4 +1,4 @@
-const titles = {times:'Nossos times',jogadores:'Jogadores',movimentacoes:'Movimentações',duplicidades:'Duplicidades','gerenciar-times':'Gerenciar times'};
+const titles = {times:'Nossos times',jogadores:'Jogadores',movimentacoes:'Movimentações',duplicidades:'Duplicidades','gerenciar-times':'Gerenciar times','dia-de-jogo':'Dia de jogo'};
 export function currentPage(hash = location.hash) {
   const key = hash.replace(/^#\/?/,'');
   return Object.hasOwn(titles,key) ? key : 'times';

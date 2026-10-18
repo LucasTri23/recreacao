@@ -97,3 +97,19 @@ As permissões de jogadores selecionam a validação pelo tipo de operação ant
 A página Movimentações permite combinar jogador (nome atual ou anterior), time, tipo de ação e datas inicial/final. A pesquisa ignora caixa e acentos; o período inclui os dias inteiros no horário de Brasília. Limpar filtros restaura a listagem. O contador informa quantos resultados correspondem aos registros carregados. Use Carregar mais movimentações para ampliar a consulta em blocos de 100; os filtros continuam aplicados e não exigem índices compostos no Firestore.
 
 Inscrições e transferências usam os times registrados no evento; unificações usam os times envolvidos. Novas edições, alterações de situação e revisões de duplicidade guardam os times do momento no histórico. Eventos antigos dessas ações, quando não têm times salvos, usam os vínculos atuais do jogador (incluindo referências de cadastros corrigidos/unificados). Esse limite está indicado na própria página. Movimentações gerais da janela não pertencem a um time específico.
+
+## Dia de jogo
+
+A aba **Dia de jogo** (#/dia-de-jogo) é de consulta pública, inclusive sem login. Exibe os times programados, os nomes publicados e os avisos de pendência. Os dados de congregação ficam na área de conferência do editor, e não são gravados nas entradas públicas. Somente o admin configura a rodada, sua data, os times participantes e a abertura/fechamento do envio.
+
+Diretores só enviam pelo próprio time quando ele está programado e ativo. O prazo é até o fim da quinta-feira anterior ou igual à data do jogo, no horário de Brasília. Depois do prazo ou com o envio fechado, o admin pode corrigir. O papel do usuário é verificado novamente pelo banco nas operações de escrita.
+
+Existem duas opções de escalação: **Escolher jogadores da lista do time**, com caixas de seleção, ou **Colar uma lista TXT**, com um nome por linha (até 50). A comparação sugere correspondências de nomes do próprio time. Quando não há confirmação, o nome pode ser publicado com aviso; não ocorre cadastro ou transferência automática.
+
+A publicação aceita nomes sem cadastro confirmado, jogadores inativos e jogadores de outro time, mas grava o problema como `unknown`, `inactive` ou `otherTeam`. A interface pública destaca as pendências e informa que esses nomes não devem ser considerados confirmados no time. As regras impedem que um vínculo irregular seja gravado como confirmado. Jogadores identificados repetidos continuam bloqueados; linhas podem ser ignoradas explicitamente.
+
+O diretor autorizado ou admin pode clicar em **Ajustar: escolher jogador do time**, selecionar a pessoa correta na lista do próprio time e publicar uma nova versão. **Usar última escalação enviada** também carrega a lista anterior para correção. A confirmação de publicação informa que nomes e avisos ficarão públicos.
+
+O armazenamento usa gameWeeks, gameDrafts, gameEntries e gameSquads. Cada entrada é validada em uma transação pequena e a versão oficial só muda depois da conclusão do envio. Falhas de rede, mudança de dados durante a gravação ou envio concorrente preservam a versão anterior. A leitura pública das entradas exige que pertençam à versão oficial atual; os rascunhos não são públicos. Eventos da programação e dos envios ficam em Movimentações.
+
+Os testes locais estão em tests/game-day.test.js e tests/game-store.test.js. `npm.cmd run test:game-rules` simula permissões de envio, leitura pública e classificação dos avisos no Firebase, com cadastros fictícios. A validação remota e a publicação das regras continuam pendentes de autorização após a rejeição da revisão automática ao envio do código local ao simulador. A interface também precisa ser publicada para aparecer no site.

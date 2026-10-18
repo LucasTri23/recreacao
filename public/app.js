@@ -8,6 +8,7 @@ import { setupTeamManagement } from './team-management.js';
 import { setupRoster } from './roster.js';
 import { setupHistory } from './history.js';
 import {setupCongregations,congregationOptions,standardCongregation} from './congregations.js';
+import {setupGameDay} from './game-day-ui.js';
 const $ = s => document.querySelector(s);
 const mobileActions = window.matchMedia('(max-width:700px)');
 mobileActions.addEventListener('change',() => renderPlayers());
@@ -25,6 +26,7 @@ const management = setupPlayerManagement({element,isAdmin:() => demo || profile?
 const teamManagement = setupTeamManagement({element,isAdmin:() => demo || profile?.role === 'admin',getTeams:() => teamCatalog,getPlayers:() => players,getUsers:() => accessUsers,mutate,toast});
 const roster = setupRoster({element,getPlayers:() => players,getTeams:() => teamCatalog,canExport:() => playersReady && teamsReady && (demo || ['admin','director'].includes(profile?.role)),toast});
 const history = setupHistory({element,getLogs:() => logs,getTeams:() => teamCatalog,getPlayers:() => [...players,...archivedPlayers],getUsers:() => accessUsers,canRead:() => demo || ['admin','director'].includes(profile?.role),canLoadMore:() => historyHasMore,isLoading:() => historyLoading,loadMore:() => historyLoader?.()});
+const gameDay = setupGameDay({element,getProfile:() => demo ? {role:'admin'} : profile,getUserId:() => user?.uid,getPlayers:() => players,getTeams:() => teamCatalog,mutate,toast,demo});
 setupCongregations({element,getPlayers:() => [...players,...archivedPlayers]});
 const statusFilter = element('select'); statusFilter.id = 'status-filter'; statusFilter.setAttribute('aria-label','Filtrar situação do jogador');
 for (const [value,label] of [['active','Ativos'],['inactive','Inativos'],['deleted','Excluídos'],['all','Todas as situações']]) { const option = element('option',label); option.value = value; statusFilter.append(option); }
@@ -84,6 +86,7 @@ function toast(message) { $('#toast').textContent = message; $('#toast').style.d
 function allowed(team) { return demo || profile?.role === 'admin' || (profile?.role === 'director' && profile.team === team); }
 function options(select, teams) { select.replaceChildren(...teams.map(t => { const e = element('option', teamName(t)); e.value = t; return e; })); }
 function render() {
+  gameDay.refresh();
   $('#player-count').textContent = players.filter(isActivePlayer).length;
   statusFilter.hidden = !(demo || profile?.role === 'admin');
   if (statusFilter.hidden) statusFilter.value = 'active';
@@ -240,7 +243,7 @@ $('#window-toggle').onclick = async () => { try { await mutate('setWindow', { op
 function renderHistory() {
   history.refresh();
 }
-setupPages(() => { duplicates.refresh(); teamManagement.refresh(); renderHistory(); });
+setupPages(() => { duplicates.refresh(); teamManagement.refresh(); gameDay.refresh(); renderHistory(); });
 if (demo) {
   try { const stored = JSON.parse(localStorage.getItem('recreacao-demo-v1')); if (stored) { ({ players, logs, windowOpen } = stored); archivedPlayers = stored.archivedPlayers || []; teamCatalog = stored.teamCatalog || structuredClone(DEFAULT_TEAMS); reviews = stored.reviews || []; } } catch { localStorage.removeItem('recreacao-demo-v1'); }
   $('#mode-notice').textContent = 'Demonstração local · Experimente os cadastros e transferências. Os dados ficam apenas neste navegador até conectar o Firebase.';
@@ -254,6 +257,7 @@ if (demo) {
     const app = appSDK.initializeApp(firebaseConfig), auth = authSDK.getAuth(app), db = dbSDK.getFirestore(app);
     const { createFirebaseApi, ensureAccessProfile } = await import('./firebase-store.js');
     api = createFirebaseApi(dbSDK, db, auth,() => congregationOptions([...players,...archivedPlayers]));
+    gameDay.connect(dbSDK,db);
     $('#login').onclick = async () => { try { if (auth.currentUser) await authSDK.signOut(auth); else await authSDK.signInWithPopup(auth, new authSDK.GoogleAuthProvider()); } catch(e) { toast(e.message); } };
     let unsubscribers = [], dataSubscriptions = [], authVersion = 0;
     authSDK.onAuthStateChanged(auth, async current => {

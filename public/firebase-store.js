@@ -1,6 +1,7 @@
 import { membership, playerId, mergedTeams, playerDetails, isActivePlayer, playerStatus, reviewKey } from './domain.js';
 import {DEFAULT_TEAMS,changeTeam,teamActive} from './teams.js';
 import {standardCongregation} from './congregations.js';
+import {createGameApi} from './game-store.js';
 export async function ensureAccessProfile(sdk, db, user) {
   const ref = sdk.doc(db, 'users', user.uid);
   let existingProfile = null;
@@ -24,6 +25,7 @@ export async function ensureAccessProfile(sdk, db, user) {
 export function createFirebaseApi(sdk, db, auth, getCongregations = () => []) {
   const { doc, collection, runTransaction, serverTimestamp } = sdk;
   return async (action, data) => {
+    if (['saveGameWeek','submitGameSquad'].includes(action)) return createGameApi(sdk,db,auth)(action,data);
     if (['addPlayer','editPlayer'].includes(action)) data = {...data,congregation:standardCongregation(data.congregation,getCongregations())};
     if (!auth.currentUser) throw Error('Entre com sua conta.');
     const uid = auth.currentUser.uid;
