@@ -100,6 +100,12 @@ Inscrições e transferências usam os times registrados no evento; unificaçõe
 
 ## Dia de jogo
 
+A consulta pública mostra um resumo dos times que enviaram a escalação e dos que ainda estão pendentes. Envio não significa ausência de irregularidades: os avisos continuam nos confrontos. Cada confronto oferece “Copiar confronto para WhatsApp”, com data, horário, campo, observações públicas e as últimas escalações publicadas, incluindo pendências de vínculo. Não compartilha congregações. Se o navegador bloquear a área de transferência, um campo permite copiar o texto manualmente. O botão apenas copia; o usuário escolhe onde enviar.
+
+Cada confronto tem horário (Brasília) e campo/local opcionais, exibidos publicamente; quando não preenchidos, aparecem como “a definir”. O horário deve estar em HH:MM e o local aceita até 120 caracteres em uma linha. Esses dados acompanham o confronto ao remover outros pares e são recuperados ao editar a programação. A data continua sendo a mesma para a rodada inteira.
+
+O admin monta cada confronto escolhendo dois times e pode adicionar outro par com as equipes restantes. Uma equipe não pode repetir na rodada. Os pares são preservados na ordem da lista `teams` (posições 0/1, 2/3 etc.) e exibidos juntos na consulta pública. Programações antigas com quantidade ímpar precisam ser completadas ou ajustadas antes de salvar. Os seletores e as escalações ficam em uma coluna nas telas pequenas.
+
 A aba **Dia de jogo** (#/dia-de-jogo) é de consulta pública, inclusive sem login. Exibe os times programados, os nomes publicados e os avisos de pendência. Os dados de congregação ficam na área de conferência do editor, e não são gravados nas entradas públicas. Somente o admin configura a rodada, sua data, os times participantes e a abertura/fechamento do envio.
 
 Diretores só enviam pelo próprio time quando ele está programado e ativo. O prazo é até o fim da quinta-feira anterior ou igual à data do jogo, no horário de Brasília. Depois do prazo ou com o envio fechado, o admin pode corrigir. O papel do usuário é verificado novamente pelo banco nas operações de escrita.

@@ -39,13 +39,30 @@ test('semana começa segunda e prazo inclui quinta inteira em Brasília', () => 
   assert.equal(weekStart('2026-10-25'),'2026-10-19');
   assert.deepEqual(weekDeadline('2026-10-25'),{cutoff:'2026-10-22',deadline:Date.parse('2026-10-23T03:00:00Z')});
   assert.equal(weekDeadline('2026-10-20').cutoff,'2026-10-15');
-  const week = gameWeekDetails({gameDate:'2026-10-25',teams:['VERDE'],status:'open'},DEFAULT_TEAMS);
+  const week = gameWeekDetails({gameDate:'2026-10-25',teams:['VERDE','BRANCO'],status:'open'},DEFAULT_TEAMS);
   assert.ok(canSubmitSquad({role:'director',team:'VERDE'},week,'VERDE',DEFAULT_TEAMS,week.deadline-1));
   assert.equal(canSubmitSquad({role:'director',team:'VERDE'},week,'VERDE',DEFAULT_TEAMS,week.deadline),false);
   assert.ok(canSubmitSquad({role:'admin'},{...week,status:'closed'},'VERDE',DEFAULT_TEAMS,week.deadline+10000));
   assert.equal(canSubmitSquad({role:'director',team:'BRANCO'},week,'VERDE',DEFAULT_TEAMS,1),false);
-  assert.equal(canSubmitSquad({role:'admin'},week,'BRANCO',DEFAULT_TEAMS,1),false);
+  assert.equal(canSubmitSquad({role:'admin'},week,'AZUL',DEFAULT_TEAMS,1),false);
   assert.throws(() => weekStart('2026-02-30'),/válida/);
+});
+test('programação guarda pares em ordem e rejeita confronto incompleto ou time repetido', () => {
+  const data = {gameDate:'2026-10-25',status:'open',teams:['VERDE','BRANCO','BLUES','COIOTES']};
+  assert.deepEqual(gameWeekDetails(data,DEFAULT_TEAMS).teams,data.teams);
+  for (const teams of [[],['VERDE'],['VERDE','BRANCO','AZUL']]) assert.throws(() => gameWeekDetails({...data,teams},DEFAULT_TEAMS),/dois times/);
+  assert.throws(() => gameWeekDetails({...data,teams:['VERDE','BRANCO','VERDE','AZUL']},DEFAULT_TEAMS),/mais de um confronto/);
+  assert.throws(() => gameWeekDetails({...data,teams:['VERDE','']},DEFAULT_TEAMS),/times ativos/);
+});
+test('horário e campo pertencem a cada par, com validação e compatibilidade com dados antigos', () => {
+  const data = {gameDate:'2026-10-25',status:'open',teams:['VERDE','BRANCO','BLUES','COIOTES'],matchTimes:['20:30','09:00'],matchFields:[' Campo Santa Cruz ','Campo Centro']};
+  const details = gameWeekDetails(data,DEFAULT_TEAMS);
+  assert.deepEqual(details.matchTimes,['20:30','09:00']); assert.deepEqual(details.matchFields,['Campo Santa Cruz','Campo Centro']);
+  assert.deepEqual(gameWeekDetails({...data,matchTimes:undefined,matchFields:undefined},DEFAULT_TEAMS).matchTimes,['','']);
+  assert.deepEqual(gameWeekDetails({...data,matchTimes:['',''],matchFields:['','']},DEFAULT_TEAMS).matchFields,['','']);
+  for (const time of ['24:00','12:60','9:00',123]) assert.throws(() => gameWeekDetails({...data,matchTimes:[time,'']},DEFAULT_TEAMS),/Horário inválido/);
+  for (const field of ['a'.repeat(121),'Campo\nCentro','Campo|Centro',123]) assert.throws(() => gameWeekDetails({...data,matchFields:[field,'']},DEFAULT_TEAMS),/campo deve/);
+  assert.throws(() => gameWeekDetails({...data,matchTimes:['20:30']},DEFAULT_TEAMS),/cada confronto/);
 });
 test('TXT permite publicar pendências, enquanto identificação do problema é explícita', () => {
   const rows = compareGameList('Gabriel\nPedro\nInativo\nDesconhecido',players,'VERDE'), entries = gameListEntries(rows);

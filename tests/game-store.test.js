@@ -26,6 +26,15 @@ test('admin programa a semana e diretor publica somente jogadores do próprio ti
   await assert.rejects(api('submitGameSquad',{weekId:'2026-10-19',teamId:'BRANCO',playerIds:[ids[0]]}),/bloqueado/);
   await assert.rejects(api('saveGameWeek',{gameDate:'2026-10-25',teams:['VERDE'],status:'open'}),/administração/);
 });
+test('admin salva e recupera horário e campo de cada confronto',async () => {
+  const {api,records} = await fixture();
+  const data = {gameDate:'2026-10-25',teams:['VERDE','BRANCO','BLUES','COIOTES'],status:'open',matchTimes:['20:30','21:30'],matchFields:['Santa Cruz','Centro']};
+  await api('saveGameWeek',data);
+  const saved = records.get('gameWeeks/2026-10-19');
+  assert.deepEqual(saved.matchTimes,data.matchTimes); assert.deepEqual(saved.matchFields,data.matchFields);
+  await assert.rejects(api('saveGameWeek',{...data,matchTimes:['25:00','21:30']}),/Horário inválido/);
+  assert.deepEqual(records.get('gameWeeks/2026-10-19'),saved);
+});
 test('diretor não envia depois de quinta; admin corrige depois do prazo',async () => {
   const {api,records,ids,setClock} = await fixture(); setClock(Date.parse('2026-10-23T03:00:00Z')); records.set('users/u',{role:'director',team:'VERDE'});
   await assert.rejects(api('submitGameSquad',{weekId:'2026-10-19',teamId:'VERDE',playerIds:[ids[0]]}),/bloqueado/);

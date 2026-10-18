@@ -7,11 +7,11 @@ auth.setActiveAccount({},auth.getGlobalDefaultAccount());
 const path = suffix => '/databases/(default)/documents/'+suffix;
 const mock = (fn,suffix,value) => ({function:fn,args:[{exactValue:path(suffix)}],result:{value}});
 const id = 'a'.repeat(64), draftId = 'game-event', weekId = '2026-10-19', squadId = `${weekId}_VERDE`;
-const week = {...gameWeekDetails({gameDate:'2026-10-25',teams:['VERDE'],status:'open'},DEFAULT_TEAMS),teamNames:{VERDE:'VERDE'},updatedAt:1000,lastEvent:draftId};
+const week = {...gameWeekDetails({gameDate:'2026-10-25',teams:['VERDE','BRANCO'],status:'open'},DEFAULT_TEAMS),teamNames:{VERDE:'VERDE',BRANCO:'BRANCO'},updatedAt:1000,lastEvent:draftId};
 const draft = {weekId,teamId:'VERDE',squadId,actor:'u',createdAt:1000,baseDraft:''};
 const entry = {draftId,weekId,teamId:'VERDE',playerId:id,position:0,rawName:'JOGADOR TESTE',name:'JOGADOR TESTE',issue:'ok',actor:'u',updatedAt:1000};
 const squad = {weekId,teamId:'VERDE',draftId,submittedBy:'u',updatedAt:1000,lastEvent:draftId};
-const scheduleEvent = {kind:'gameWeek',weekId,teams:['VERDE'],name:'Dia de jogo',detail:'Programação de teste',actor:'u',at:1000};
+const scheduleEvent = {kind:'gameWeek',weekId,teams:['VERDE','BRANCO'],name:'Dia de jogo',detail:'Programação de teste',actor:'u',at:1000};
 const squadEvent = {kind:'gameSquad',weekId,teamId:'VERDE',draftId,name:'VERDE',detail:'Escalação de teste',actor:'u',at:1000};
 const mocks = [mock('get','users/u',{data:{role:'director',team:'VERDE'}}),mock('exists','settings/teams',false),mock('get',`gameWeeks/${weekId}`,{data:week}),mock('getAfter',`gameWeeks/${weekId}`,{data:week}),mock('get',`gameDrafts/${draftId}`,{data:draft}),mock('get',`players/${id}`,{data:{name:entry.name,teams:['VERDE']}}),mock('getAfter',`gameSquads/${squadId}`,{data:squad}),mock('getAfter',`events/${draftId}`,{data:squadEvent})];
 const cases = [], labels = [];
@@ -23,6 +23,13 @@ const set = (test,fn,suffix,data) => { test.functionMocks.find(m => m.function =
 const admin = test => set(test,'get','users/u',{data:{role:'admin'}});
 add('admin programa semana',`gameWeeks/${weekId}`,'create',week,'ALLOW',test => { admin(test); set(test,'getAfter',`events/${draftId}`,{data:scheduleEvent}); });
 add('diretor não programa semana',`gameWeeks/${weekId}`,'create',week,'DENY',test => set(test,'getAfter',`events/${draftId}`,{data:scheduleEvent}));
+for (const [label,changes,expectation] of [
+  ['horário e campo válidos',{matchTimes:['20:30'],matchFields:['Santa Cruz']},'ALLOW'],
+  ['horário inválido',{matchTimes:['24:00']},'DENY'],
+  ['campo muito longo',{matchFields:['a'.repeat(121)]},'DENY'],
+  ['campo com separador inválido',{matchFields:['Santa|Cruz']},'DENY'],
+  ['quantidade de horários incorreta',{matchTimes:[]},'DENY']
+]) add(label,`gameWeeks/${weekId}`,'create',{...week,...changes},expectation,test => { admin(test); set(test,'getAfter',`events/${draftId}`,{data:scheduleEvent}); });
 add('histórico da programação',`events/${draftId}`,'create',scheduleEvent,'ALLOW',test => { admin(test); set(test,'getAfter',`events/${draftId}`,{data:scheduleEvent}); });
 add('diretor cria conferência','gameDrafts/'+draftId,'create',draft,'ALLOW');
 add('jogador do time entra na lista','gameEntries/'+draftId+'_0','create',entry,'ALLOW');
