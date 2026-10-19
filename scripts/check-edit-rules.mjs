@@ -58,7 +58,7 @@ addCases('histórico não pode forjar times','DENY',(testCase,index) => {
 });
 // Reproduce the reported admin signup using fictitious account information.
 const signupId = await playerId('UZIEL LUCAS','GLÓRIA - BH');
-const signupPlayer = {name:'UZIEL LUCAS',congregation:'GLÓRIA - BH',teams:['PRETO'],updatedAt:1000,lastEvent:'signup-event'};
+const signupPlayer = {name:'UZIEL LUCAS',congregation:'GLÓRIA - BH',city:'Belo Horizonte',teams:['PRETO'],updatedAt:1000,lastEvent:'signup-event'};
 const signupEvent = {actor:'admin-test',actorName:'Outro Admin',at:1000,kind:'add',playerId:signupId,name:signupPlayer.name,from:'',to:'PRETO',detail:'Inscrição em PRETO'};
 for (const [label,profile,expectation] of [
   ['admin sem time pode cadastrar',{role:'admin',displayName:'Outro Admin'},'ALLOW'],
@@ -71,12 +71,36 @@ for (const [label,profile,expectation] of [
   // For a forbidden director, the player rule is what rejects the transaction.
   if (expectation === 'ALLOW') { cases.push({expectation,request:{auth:{uid:'admin-test'},path:path('events/signup-event'),method:'create',resource:{data:signupEvent}},functionMocks:signupMocks,expressionReportLevel:'FULL'}); labels.push(label+': histórico com responsável'); }
 }
-for (const [name,congregation] of [['JOÃO GONÇALVES','SÃO JOSÉ'],['ÀÁÂÃÄÅ ÈÉÊË ÌÍÎÏ ÒÓÔÕÖ ÙÚÛÜ Ç Ñ ÝŸ','CENTRO']]) {
+for (const [name,congregation] of [['JOÃO GONÇALVES','SÃO JOSÉ - BH'],['ÀÁÂÃÄÅ ÈÉÊË ÌÍÎÏ ÒÓÔÕÖ ÙÚÛÜ Ç Ñ ÝŸ','CENTRO - BH']]) {
   const accentedId = await playerId(name,congregation), p = {...signupPlayer,name,congregation};
   const e = {...signupEvent,name,playerId:accentedId};
   const fixtureMocks = [mock('get','users/admin-test',{data:{role:'admin',displayName:'Outro Admin'}}),mock('exists','settings/teams',false),mock('getAfter','events/signup-event',{data:e})];
   cases.push({expectation:'ALLOW',request:{auth:{uid:'admin-test'},path:path('players/'+accentedId),method:'create',resource:{data:p}},functionMocks:fixtureMocks,expressionReportLevel:'FULL'}); labels.push('acentos maiúsculos: '+name);
   cases.push({expectation:'DENY',request:{auth:{uid:'admin-test'},path:path('players/'+'0'.repeat(64)),method:'create',resource:{data:p}},functionMocks:fixtureMocks,expressionReportLevel:'FULL'}); labels.push('identidade divergente continua bloqueada: '+name);
+}
+for (const [label,oldFlag,newFlag,expectation] of [
+  ['goleiro pode entrar no terceiro time',true,true,'ALLOW'],
+  ['linha não pode entrar no terceiro time',false,false,'DENY'],
+  ['inscrição não pode promover linha a goleiro',false,true,'DENY']
+]) {
+  const beforePlayer = {...signupPlayer,goalkeeper:oldFlag,teams:['PRETO','BRANCO'],updatedAt:1,lastEvent:'previous'};
+  const nextPlayer = {...beforePlayer,goalkeeper:newFlag,teams:['PRETO','BRANCO','VERDE'],updatedAt:1000,lastEvent:'signup-event'};
+  const e = {...signupEvent,to:'VERDE',detail:'Inscrição em VERDE'};
+  cases.push({expectation,request:{auth:{uid:'admin-test'},path:path('players/'+signupId),method:'update',resource:{data:nextPlayer}},resource:{data:beforePlayer},functionMocks:[mock('get','users/admin-test',{data:{role:'admin'}}),mock('exists','settings/teams',false),mock('getAfter','events/signup-event',{data:e})],expressionReportLevel:'FULL'}); labels.push(label);
+}
+addCases('admin pode marcar goleiro ao editar','ALLOW',(testCase,index) => {
+  const changed = {...after,goalkeeper:true};
+  testCase.functionMocks.find(m => m.function === 'getAfter' && m.args[0].exactValue === path('players/'+newId)).result.value.data = changed;
+  if (index === 1) testCase.request.resource.data = changed;
+});
+for (const [label,changes,expectation] of [
+  ['cidade válida aceita',{city:'Belo Horizonte'},'ALLOW'],
+  ['cidade fora da lista recusada',{city:'Cidade inventada'},'DENY'],
+  ['cidade divergente recusada',{city:'Betim'},'DENY'],
+  ['novo cadastro sem cidade recusado',{city:undefined},'DENY']
+]) {
+  const p = {...signupPlayer,...changes}; if (p.city === undefined) delete p.city;
+  cases.push({expectation,request:{auth:{uid:'admin-test'},path:path('players/'+signupId),method:'create',resource:{data:p}},functionMocks:[mock('get','users/admin-test',{data:{role:'admin'}}),mock('exists','settings/teams',false),mock('getAfter','events/signup-event',{data:signupEvent})],expressionReportLevel:'FULL'}); labels.push(label);
 }
 // Use a fixed scalar in fixtures to isolate rule logic from Timestamp encoding.
 const content = (await readFile('firestore.rules','utf8')).replaceAll('request.time.toMillis()','1000').replaceAll('request.time','1000');

@@ -1,4 +1,5 @@
 import {identity,similarity,playerName} from './domain.js';
+import {splitCongregation} from './cities.js';
 const key = value => identity(String(value || ''),'').slice(0,-1).replace(/[^a-z0-9]+/g,' ').trim();
 const expanded = value => key(value).replace(/\bbh\b/g,'belo horizonte');
 export function congregationOptions(players) {
@@ -36,7 +37,12 @@ export function setupCongregations({element,getPlayers}) {
     suggestions.append(element('small','Já existe uma congregação parecida. É a mesma?'));
     for (const match of matches) {
       const button = element('button',`Usar ${match}`,'row-action'); button.type = 'button';
-      button.onclick = () => { input.value = match; input.dispatchEvent(new Event('input',{bubbles:true})); input.focus(); };
+      button.onclick = () => {
+        const parts = splitCongregation(match), city = input.form?.elements.city;
+        input.value = city ? parts.congregation : match;
+        if (city && !city.disabled && parts.city) city.value = parts.city;
+        input.dispatchEvent(new Event('input',{bubbles:true})); input.focus();
+      };
       suggestions.append(button);
     }
   }

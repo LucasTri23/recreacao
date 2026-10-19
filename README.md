@@ -98,6 +98,16 @@ A página Movimentações permite combinar jogador (nome atual ou anterior), tim
 
 Inscrições e transferências usam os times registrados no evento; unificações usam os times envolvidos. Novas edições, alterações de situação e revisões de duplicidade guardam os times do momento no histórico. Eventos antigos dessas ações, quando não têm times salvos, usam os vínculos atuais do jogador (incluindo referências de cadastros corrigidos/unificados). Esse limite está indicado na própria página. Movimentações gerais da janela não pertencem a um time específico.
 
+## Cidade no cadastro
+
+O cadastro e a edição usam um seletor obrigatório de Cidade com os 34 municípios definidos. Não aceita digitação livre. Cadastros antigos no formato “congregação - cidade” são separados na interface; BH é reconhecido como Belo Horizonte. Sufixos desconhecidos não são adivinhados e precisam de conferência do admin na edição. Internamente a congregação mantém o formato combinado para preservar pesquisa, exportação e identificadores legados; novos registros também gravam `city`. Abreviações e separadores conhecidos são reutilizados para evitar criar uma nova identidade só pela padronização da cidade. Inscrições em cadastros existentes preservam seus dados; alterações são feitas em Editar. As regras exigem cidade válida em novos cadastros e compatível com o sufixo da congregação. A lista reduz variações de escrita, mas não comprova a identidade ou a cidade informada.
+
+Publicação: em 19/10/2026 as regras de cidade foram validadas no simulador (68 cenários de regras no total), mas ainda não publicadas. A interface com o seletor deve entrar antes de ativar a exigência de cidade nas regras, para que a versão antiga não perca a capacidade de criar jogadores. Depois da publicação da interface, executar `npm.cmd run deploy:rules`.
+
+## Goleiros
+
+O cadastro oferece o botão “🧤 Ele é GOLEIRO?”. Goleiros podem ter inscrições em qualquer quantidade de times, respeitando o acesso do diretor ao próprio time e sem inscrição repetida no mesmo time. Jogadores de linha continuam limitados a dois times. Em cadastros existentes, somente o admin altera a classificação por Editar; para retirar a marcação, é preciso reduzir as inscrições para no máximo duas. Na unificação, vale a classificação do cadastro que será mantido.
+
 ## Dia de jogo
 
 A consulta pública mostra um resumo dos times que enviaram a escalação e dos que ainda estão pendentes. Envio não significa ausência de irregularidades: os avisos continuam nos confrontos. Cada confronto oferece “Copiar confronto para WhatsApp”, com data, horário, campo, observações públicas e as últimas escalações publicadas, incluindo pendências de vínculo. Não compartilha congregações. Se o navegador bloquear a área de transferência, um campo permite copiar o texto manualmente. O botão apenas copia; o usuário escolhe onde enviar.

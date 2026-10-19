@@ -19,16 +19,23 @@ service cloud.firestore {
     }
     function validPlayer(id, p) {
       return p.keys().hasAll(['name','congregation','teams','updatedAt','lastEvent'])
-        && p.keys().hasOnly(['name','congregation','teams','updatedAt','lastEvent','status'])
+        && p.keys().hasOnly(['name','congregation','city','teams','updatedAt','lastEvent','status','goalkeeper'])
+        && (!('city' in p) || validPlayerCity(p))
+        && p.get('goalkeeper',false) is bool
         && p.get('status','active') in ['active','inactive','deleted']
         && p.name is string && p.name.size() >= 3 && p.name.size() <= 120
         && p.congregation is string && p.congregation.size() >= 2 && p.congregation.size() <= 120
         && !p.name.matches('.*[|].*') && !p.congregation.matches('.*[|].*')
         && id == hashing.sha256(normalized(p.name) + '|' + normalized(p.congregation)).toHexString().lower()
-        && p.teams is list && p.teams.size() >= 1 && p.teams.size() <= 2
+        && p.teams is list && p.teams.size() >= 1 && (p.get('goalkeeper',false) || p.teams.size() <= 2)
         && p.teams.toSet().size() == p.teams.size()
         && teamCatalog().keys().hasAll(p.teams)
         && p.updatedAt == request.time && p.lastEvent is string;
+    }
+    function validPlayerCity(p) {
+      return p.city in ['Belo Horizonte','Baldim','Betim','Caeté','Capim Branco','Confins','Contagem','Conselheiro Lafaiete','Esmeraldas','Florestal','Ibirité','Igarapé','Itaguara','Itatiaiuçu','Jaboticatubas','Juatuba','Lagoa Santa','Mário Campos','Mateus Leme','Matozinhos','Nova Lima','Nova União','Pedro Leopoldo','Raposos','Ribeirão das Neves','Rio Acima','Rio Manso','Sabará','Santa Luzia','São Joaquim de Bicas','São José da Lapa','Sarzedo','Taquaraçu de Minas','Vespasiano']
+        && (normalized(p.congregation).matches('.* [-–—] '+normalized(p.city))
+          || (p.city == 'Belo Horizonte' && normalized(p.congregation).matches('.* [-–—] bh')));
     }
     function playerEvent(id, p, kind, from, to) {
       let e = getAfter(/databases/$(database)/documents/events/$(p.lastEvent)).data;
@@ -98,7 +105,7 @@ service cloud.firestore {
         && !('mergedInto' in old) && old.get('status','active') != 'deleted'
         && validPlayer(e.playerId,p) && e.name == p.name && e.congregation == p.congregation
         && e.previousName == old.name && e.previousCongregation == old.congregation
-        && p.diff(old).affectedKeys().hasOnly(['name','congregation','updatedAt','lastEvent'])
+        && p.diff(old).affectedKeys().hasOnly(['name','congregation','city','goalkeeper','updatedAt','lastEvent'])
         && p.lastEvent == eventId && old.lastEvent != eventId
         && (e.sourceId == e.playerId || (!exists(/databases/$(database)/documents/players/$(e.playerId))
           && archived.diff(old).affectedKeys().hasOnly(['teams','mergedInto','updatedAt','lastEvent'])
@@ -263,6 +270,7 @@ service cloud.firestore {
     match /players/{id} {
       allow read: if member();
       allow create: if member() && playerAction(request.resource.data) == 'add' && validPlayer(id, request.resource.data)
+        && 'city' in request.resource.data
         && active(request.resource.data)
         && request.resource.data.teams.size() == 1 && manages(request.resource.data.teams[0]) && teamActive(request.resource.data.teams[0])
         && playerEvent(id, request.resource.data, 'add', '', request.resource.data.teams[0]);
