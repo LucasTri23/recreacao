@@ -102,6 +102,11 @@ for (const [label,changes,expectation] of [
   const p = {...signupPlayer,...changes}; if (p.city === undefined) delete p.city;
   cases.push({expectation,request:{auth:{uid:'admin-test'},path:path('players/'+signupId),method:'create',resource:{data:p}},functionMocks:[mock('get','users/admin-test',{data:{role:'admin'}}),mock('exists','settings/teams',false),mock('getAfter','events/signup-event',{data:signupEvent})],expressionReportLevel:'FULL'}); labels.push(label);
 }
+addCases('edição antiga passa a gravar cidade','ALLOW',(testCase,index) => {
+  const changed = {...after,city:'Vespasiano'};
+  testCase.functionMocks.find(m => m.function === 'getAfter' && m.args[0].exactValue === path('players/'+newId)).result.value.data = changed;
+  if (index === 1) testCase.request.resource.data = changed;
+});
 // Use a fixed scalar in fixtures to isolate rule logic from Timestamp encoding.
 const content = (await readFile('firestore.rules','utf8')).replaceAll('request.time.toMillis()','1000').replaceAll('request.time','1000');
 const client = new Client({urlPrefix:'https://firebaserules.googleapis.com',apiVersion:'v1'});

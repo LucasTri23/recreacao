@@ -102,7 +102,7 @@ Inscrições e transferências usam os times registrados no evento; unificaçõe
 
 O cadastro e a edição usam um seletor obrigatório de Cidade com os 34 municípios definidos. Não aceita digitação livre. Cadastros antigos no formato “congregação - cidade” são separados na interface; BH é reconhecido como Belo Horizonte. Sufixos desconhecidos não são adivinhados e precisam de conferência do admin na edição. Internamente a congregação mantém o formato combinado para preservar pesquisa, exportação e identificadores legados; novos registros também gravam `city`. Abreviações e separadores conhecidos são reutilizados para evitar criar uma nova identidade só pela padronização da cidade. Inscrições em cadastros existentes preservam seus dados; alterações são feitas em Editar. As regras exigem cidade válida em novos cadastros e compatível com o sufixo da congregação. A lista reduz variações de escrita, mas não comprova a identidade ou a cidade informada.
 
-Publicação: em 19/10/2026 as regras de cidade foram validadas no simulador (68 cenários de regras no total), mas ainda não publicadas. A interface com o seletor deve entrar antes de ativar a exigência de cidade nas regras, para que a versão antiga não perca a capacidade de criar jogadores. Depois da publicação da interface, executar `npm.cmd run deploy:rules`.
+Publicação: em 19/10/2026 foi confirmado que o seletor de Cidade já estava na interface pública. Os 71 cenários de regras passaram no simulador, incluindo a edição de cadastros antigos com Cidade, e as regras foram publicadas no Firebase. Isso corrige a recusa de edições causada pela interface nova usando regras antigas. Em futuras mudanças de campos obrigatórios, publicar a interface compatível antes de ativar a exigência nas regras.
 
 ## Goleiros
 

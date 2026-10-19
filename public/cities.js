@@ -19,6 +19,6 @@ export function cityCongregation(value,city,known = []) {
 export function citySelect(element,value = '') {
   const label = element('label','Cidade'), select = element('select'); select.name = 'city'; select.required = true;
   const empty = element('option','Selecione a cidade'); empty.value = ''; select.append(empty);
-  for (const city of CITIES) { const option = element('option',city === 'Belo Horizonte' ? city+' (sede)' : city); option.value = city; select.append(option); }
+  for (const city of CITIES) { const option = element('option',city); option.value = city; select.append(option); }
   select.value = value; label.append(select); return label;
 }
