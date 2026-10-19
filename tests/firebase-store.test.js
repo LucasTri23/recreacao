@@ -19,6 +19,15 @@ function setup(profile, seed = {}) {
   };
   return {api:createFirebaseApi(sdk, {}, {currentUser:{uid:'director'}}), records, sdk};
 }
+
+test('admin cadastra UZIEL LUCAS no PRETO com congregação acentuada e sem vínculo de time', async () => {
+  const {api,records} = setup({role:'admin',displayName:'Outro Admin',email:'admin@example.com'});
+  await api('addPlayer',{name:'UZIEL LUCAS',congregation:'GLÓRIA - BH',team:'PRETO'});
+  const id = await playerId('UZIEL LUCAS','GLÓRIA - BH');
+  assert.deepEqual(records.get('players/'+id).teams,['PRETO']);
+  assert.equal(records.get('players/'+id).congregation,'GLÓRIA - BH');
+  assert.equal(records.get('events/e1').actorName,'Outro Admin');
+});
 test('inscrição persiste jogador e histórico juntos e rejeita outro time', async () => {
   const {api,records} = setup({role:'director',team:'VERDE',displayName:'João Diretor'});
   await assert.rejects(api('addPlayer',{name:'João Silva',congregation:'Centro',team:'BLUES'}),/próprio time/);

@@ -11,9 +11,10 @@ service cloud.firestore {
     function active(p) { return !('mergedInto' in p) && p.get('status','active') == 'active'; }
     function playerAction(p) { return getAfter(/databases/$(database)/documents/events/$(p.lastEvent)).data.kind; }
     function normalized(s) {
-      return s.lower().replace('[àáâãäå]', 'a').replace('[èéêë]', 'e')
-        .replace('[ìíîï]', 'i').replace('[òóôõö]', 'o').replace('[ùúûü]', 'u')
-        .replace('ç', 'c').replace('ñ', 'n').replace('[ýÿ]', 'y')
+      // Rules lower() preserves accented uppercase letters; handle both cases.
+      return s.lower().replace('[àáâãäåÀÁÂÃÄÅ]', 'a').replace('[èéêëÈÉÊË]', 'e')
+        .replace('[ìíîïÌÍÎÏ]', 'i').replace('[òóôõöÒÓÔÕÖ]', 'o').replace('[ùúûüÙÚÛÜ]', 'u')
+        .replace('[çÇ]', 'c').replace('[ñÑ]', 'n').replace('[ýÿÝŸ]', 'y')
         .replace('[̀-ͯ]', '').trim().replace('\\s+', ' ');
     }
     function validPlayer(id, p) {

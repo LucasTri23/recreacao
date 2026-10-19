@@ -56,6 +56,28 @@ addCases('histórico não pode forjar times','DENY',(testCase,index) => {
   testCase.functionMocks.find(m => m.function === 'getAfter' && m.args[0].exactValue === path('events/edit-event')).result.value.data = changed;
   if (index === 2) testCase.request.resource.data = changed;
 });
+// Reproduce the reported admin signup using fictitious account information.
+const signupId = await playerId('UZIEL LUCAS','GLÓRIA - BH');
+const signupPlayer = {name:'UZIEL LUCAS',congregation:'GLÓRIA - BH',teams:['PRETO'],updatedAt:1000,lastEvent:'signup-event'};
+const signupEvent = {actor:'admin-test',actorName:'Outro Admin',at:1000,kind:'add',playerId:signupId,name:signupPlayer.name,from:'',to:'PRETO',detail:'Inscrição em PRETO'};
+for (const [label,profile,expectation] of [
+  ['admin sem time pode cadastrar',{role:'admin',displayName:'Outro Admin'},'ALLOW'],
+  ['admin de outro time pode cadastrar',{role:'admin',team:'VERDE',displayName:'Outro Admin'},'ALLOW'],
+  ['diretor de outro time não pode cadastrar',{role:'director',team:'VERDE',displayName:'Outro Admin'},'DENY'],
+  ['diretor do próprio time pode cadastrar',{role:'director',team:'PRETO',displayName:'Outro Admin'},'ALLOW']
+]) {
+  const signupMocks = [mock('get','users/admin-test',{data:profile}),mock('exists','settings/teams',false),mock('getAfter','players/'+signupId,{data:signupPlayer}),mock('getAfter','events/signup-event',{data:signupEvent})];
+  cases.push({expectation,request:{auth:{uid:'admin-test'},path:path('players/'+signupId),method:'create',resource:{data:signupPlayer}},functionMocks:signupMocks,expressionReportLevel:'FULL'}); labels.push(label);
+  // For a forbidden director, the player rule is what rejects the transaction.
+  if (expectation === 'ALLOW') { cases.push({expectation,request:{auth:{uid:'admin-test'},path:path('events/signup-event'),method:'create',resource:{data:signupEvent}},functionMocks:signupMocks,expressionReportLevel:'FULL'}); labels.push(label+': histórico com responsável'); }
+}
+for (const [name,congregation] of [['JOÃO GONÇALVES','SÃO JOSÉ'],['ÀÁÂÃÄÅ ÈÉÊË ÌÍÎÏ ÒÓÔÕÖ ÙÚÛÜ Ç Ñ ÝŸ','CENTRO']]) {
+  const accentedId = await playerId(name,congregation), p = {...signupPlayer,name,congregation};
+  const e = {...signupEvent,name,playerId:accentedId};
+  const fixtureMocks = [mock('get','users/admin-test',{data:{role:'admin',displayName:'Outro Admin'}}),mock('exists','settings/teams',false),mock('getAfter','events/signup-event',{data:e})];
+  cases.push({expectation:'ALLOW',request:{auth:{uid:'admin-test'},path:path('players/'+accentedId),method:'create',resource:{data:p}},functionMocks:fixtureMocks,expressionReportLevel:'FULL'}); labels.push('acentos maiúsculos: '+name);
+  cases.push({expectation:'DENY',request:{auth:{uid:'admin-test'},path:path('players/'+'0'.repeat(64)),method:'create',resource:{data:p}},functionMocks:fixtureMocks,expressionReportLevel:'FULL'}); labels.push('identidade divergente continua bloqueada: '+name);
+}
 // Use a fixed scalar in fixtures to isolate rule logic from Timestamp encoding.
 const content = (await readFile('firestore.rules','utf8')).replaceAll('request.time.toMillis()','1000').replaceAll('request.time','1000');
 const client = new Client({urlPrefix:'https://firebaserules.googleapis.com',apiVersion:'v1'});
