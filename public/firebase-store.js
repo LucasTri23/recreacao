@@ -1,4 +1,4 @@
-import { membership, playerId, mergedTeams, playerDetails, isActivePlayer, playerStatus, reviewKey } from './domain.js';
+import { membership, playerId, mergedTeams, playerDetails, isActivePlayer, playerStatus, reviewKey,reusableIdentity } from './domain.js';
 import {DEFAULT_TEAMS,changeTeam,teamActive} from './teams.js';
 import {standardCongregation} from './congregations.js';
 import {createGameApi} from './game-store.js';
@@ -117,7 +117,10 @@ export function createFirebaseApi(sdk, db, auth, getCongregations = () => []) {
             const details = playerDetails(data), targetId = await playerId(details.name,details.congregation);
             if (!(details.goalkeeper ?? previous.goalkeeper) && previous.teams.length > 2) throw Error('Reduza as inscrições para até dois times antes de desmarcar goleiro.');
             const targetRef = doc(db,'players',targetId);
-            if (targetId !== id && (await tx.get(targetRef)).data()) throw Error('Já existe um cadastro com esse nome e congregação. Confira a lista e use a revisão de duplicidades.');
+            if (targetId !== id) {
+              const target = (await tx.get(targetRef)).data();
+              if (target && !await reusableIdentity(target,id,async key => (await tx.get(doc(db,'players',key))).data())) throw Error('Já existe outro cadastro com esse nome, congregação e cidade. Confira a lista e use a revisão de duplicidades.');
+            }
             tx.set(targetRef,{...previous,...details,updatedAt:serverTimestamp(),lastEvent:eventRef.id});
             if (targetId !== id) tx.set(ref,{...previous,teams:[],mergedInto:targetId,updatedAt:serverTimestamp(),lastEvent:eventRef.id});
             tx.set(eventRef,{...event,kind:'edit',playerId:targetId,sourceId:id,name:details.name,congregation:details.congregation,teams:previous.teams,previousName:previous.name,previousCongregation:previous.congregation,detail:`Cadastro editado: ${previous.name} (${previous.congregation}) → ${details.name} (${details.congregation}).`});

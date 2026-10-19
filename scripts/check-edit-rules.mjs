@@ -45,6 +45,7 @@ addCases('catálogo já cadastrado','ALLOW',testCase => {
 });
 addCases('não sobrescreve outro cadastro','DENY',testCase => {
   testCase.functionMocks.find(m => m.function === 'exists' && m.args[0].exactValue === path('players/'+newId)).result.value = true;
+  testCase.functionMocks.push(mock('get','players/'+newId,{data:{...after}}));
 });
 addCases('edição guarda os times do momento','ALLOW',(testCase,index) => {
   const changed = {...event,teams:before.teams};
@@ -106,6 +107,11 @@ addCases('edição antiga passa a gravar cidade','ALLOW',(testCase,index) => {
   const changed = {...after,city:'Vespasiano'};
   testCase.functionMocks.find(m => m.function === 'getAfter' && m.args[0].exactValue === path('players/'+newId)).result.value.data = changed;
   if (index === 1) testCase.request.resource.data = changed;
+});
+for (const hops of [1,3]) addCases('retorna à própria identidade antiga com '+hops+' vínculo(s)','ALLOW',testCase => {
+  testCase.functionMocks.find(m => m.function === 'exists' && m.args[0].exactValue === path('players/'+newId)).result.value = true;
+  const ids = [newId,'c'.repeat(64),'d'.repeat(64),oldId];
+  for (let hop=0;hop<hops;hop++) testCase.functionMocks.push(mock('get','players/'+ids[hop],{data:{teams:[],mergedInto:hop === hops-1 ? oldId : ids[hop+1]}}));
 });
 // Use a fixed scalar in fixtures to isolate rule logic from Timestamp encoding.
 const content = (await readFile('firestore.rules','utf8')).replaceAll('request.time.toMillis()','1000').replaceAll('request.time','1000');

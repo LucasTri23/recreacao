@@ -255,6 +255,23 @@ test('edição rejeita identidade existente e dados inválidos; ajuste de caixa 
   assert.equal(records.get(`players/${sourceId}`).mergedInto,undefined);
 });
 
+test('troca de cidade permite voltar a identidade antiga sem perder times, goleiro ou situação', async () => {
+  const {api,records,sdk} = setup({role:'admin'});
+  const name = 'Cidade Retorno', base = {name,congregation:'Centro',goalkeeper:true};
+  await api('addPlayer',{...base,city:'Betim',team:'PRETO'});
+  const known = () => [...records.entries()].filter(([key]) => key.startsWith('players/')).map(([,p]) => p.congregation);
+  const editApi = createFirebaseApi(sdk,{}, {currentUser:{uid:'director'}},known);
+  let currentId = await playerId(name,'CENTRO - BETIM');
+  for (const city of ['Contagem','Vespasiano','Betim','Contagem']) {
+    await editApi('editPlayer',{id:currentId,...base,city});
+    currentId = await playerId(name,'CENTRO - '+city);
+    const p = records.get('players/'+currentId);
+    assert.equal(p.mergedInto,undefined); assert.equal(p.city,city); assert.equal(p.goalkeeper,true); assert.deepEqual(p.teams,['PRETO']);
+  }
+  await editApi('addPlayer',{...base,city:'Betim',team:'BRANCO'});
+  assert.deepEqual(records.get('players/'+currentId).teams,['PRETO','BRANCO']);
+  assert.equal([...records.entries()].filter(([key,p]) => key.startsWith('players/') && !p.mergedInto).length,1);
+});
 test('admin cria time dinâmico e inscreve jogador, vincula diretor e transfere para ele', async () => {
   const id = await playerId('João Silva','Centro');
   const {api,records} = setup({role:'admin'},{'users/new':{role:'pending',team:''},'settings/transfers':{open:true}});

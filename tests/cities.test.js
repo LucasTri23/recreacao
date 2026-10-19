@@ -9,6 +9,7 @@ test('lista fechada contém os 34 municípios e separa cidades antigas sem adivi
   assert.equal(splitCongregation('GLÓRIA - BH').city,'Belo Horizonte');
   assert.equal(splitCongregation('Centro - cidade desconhecida').city,'');
   assert.equal(splitCongregation('Vera Cruz de Minas').city,'');
+  assert.deepEqual(splitCongregation('CENTRO - SETOR NORTE - BETIM'),{congregation:'CENTRO - SETOR NORTE',city:'Betim'});
 });
 test('cidade é validada e a mesma congregação em municípios distintos tem identidades distintas', async () => {
   const data = {name:'João Silva',congregation:'Centro'};

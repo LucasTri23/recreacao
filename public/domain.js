@@ -13,6 +13,16 @@ export function identity(name, congregation) {
   const clean = value => value.toLowerCase().replace(/[àáâãäå]/g,'a').replace(/[èéêë]/g,'e').replace(/[ìíîï]/g,'i').replace(/[òóôõö]/g,'o').replace(/[ùúûü]/g,'u').replace(/ç/g,'c').replace(/ñ/g,'n').replace(/[ýÿ]/g,'y').replace(/[\u0300-\u036f]/g,'').trim().replace(/\s+/g, ' ');
   return `${clean(name)}|${clean(congregation)}`;
 }
+// Only a retired identity owned by this same player can be reused on edit.
+export async function reusableIdentity(target,sourceId,read) {
+  const visited = new Set();
+  for (let hop=0;hop<3;hop++) {
+    if (!target?.mergedInto || target.teams?.length !== 0 || visited.has(target.mergedInto)) return false;
+    if (target.mergedInto === sourceId) return true;
+    visited.add(target.mergedInto); target = await read(target.mergedInto);
+  }
+  return false;
+}
 export function membership(player, team, destination = null) {
   const teams = [...player.teams];
   if (destination) {

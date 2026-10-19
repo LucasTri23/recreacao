@@ -94,6 +94,20 @@ service cloud.firestore {
         && p.lastEvent == eventId && old.lastEvent != eventId
         && e.detail is string && e.detail.size() <= 1000;
     }
+    function aliasTail(id,source) {
+      let p = get(/databases/$(database)/documents/players/$(id)).data;
+      return p.teams == [] && p.get('mergedInto','') == source;
+    }
+    function aliasMiddle(id,source) {
+      let p = get(/databases/$(database)/documents/players/$(id)).data;
+      let next = p.get('mergedInto','');
+      return p.teams == [] && (next == source || (next != '' && aliasTail(next,source)));
+    }
+    function reusableIdentity(id,source) {
+      let p = get(/databases/$(database)/documents/players/$(id)).data;
+      let next = p.get('mergedInto','');
+      return p.teams == [] && (next == source || (next != '' && aliasMiddle(next,source)));
+    }
     function validEdit(eventId) {
       let e = getAfter(/databases/$(database)/documents/events/$(eventId)).data;
       let old = get(/databases/$(database)/documents/players/$(e.sourceId)).data;
@@ -107,7 +121,7 @@ service cloud.firestore {
         && e.previousName == old.name && e.previousCongregation == old.congregation
         && p.diff(old).affectedKeys().hasOnly(['name','congregation','city','goalkeeper','updatedAt','lastEvent'])
         && p.lastEvent == eventId && old.lastEvent != eventId
-        && (e.sourceId == e.playerId || (!exists(/databases/$(database)/documents/players/$(e.playerId))
+        && (e.sourceId == e.playerId || ((!exists(/databases/$(database)/documents/players/$(e.playerId)) || reusableIdentity(e.playerId,e.sourceId))
           && archived.diff(old).affectedKeys().hasOnly(['teams','mergedInto','updatedAt','lastEvent'])
           && archived.teams == [] && archived.mergedInto == e.playerId
           && archived.lastEvent == eventId && archived.updatedAt == request.time))

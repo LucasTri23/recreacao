@@ -1,5 +1,5 @@
 import { firebaseConfig } from './firebase-config.js';
-import { identity, membership, playerId, mergedTeams, playerStatus, isActivePlayer, playerDetails,playerName,reviewKey } from './domain.js';
+import { identity, membership, playerId, mergedTeams, playerStatus, isActivePlayer, playerDetails,playerName,reviewKey,reusableIdentity } from './domain.js';
 import { setupDuplicates } from './duplicates.js';
 import { setupPages } from './pages.js';
 import { setupPlayerManagement } from './player-management.js';
@@ -215,9 +215,10 @@ async function mutate(action, data) {
       if (playerStatus(p) === 'deleted') throw Error('Restaure o jogador antes de editar.');
       const details = playerDetails(data), id = await playerId(details.name,details.congregation);
       if (!(details.goalkeeper ?? p.goalkeeper) && p.teams.length > 2) throw Error('Reduza as inscrições para até dois times antes de desmarcar goleiro.');
-      if (id !== p.id && [...players,...archivedPlayers].some(other => other.id === id)) throw Error('Já existe um cadastro com esse nome e congregação. Use a revisão de duplicidades.');
+      const target = [...players,...archivedPlayers].find(other => other.id === id);
+      if (id !== p.id && target && !await reusableIdentity(target,p.id,async key => [...players,...archivedPlayers].find(other => other.id === key))) throw Error('Já existe outro cadastro com esse nome, congregação e cidade. Use a revisão de duplicidades.');
       logs.unshift({kind:'edit',playerId:id,sourceId:p.id,previousName:p.name,teams:[...p.teams],name:details.name,detail:`Cadastro editado: ${p.name} (${playerName(p.congregation)}) → ${details.name} (${details.congregation}).`,at:Date.now()});
-      if (id !== p.id) archivedPlayers.push({...p,teams:[],mergedInto:id});
+      if (id !== p.id) { archivedPlayers = archivedPlayers.filter(other => other.id !== id); archivedPlayers.push({...p,teams:[],mergedInto:id}); }
       Object.assign(p,details,{id});
     }
   }

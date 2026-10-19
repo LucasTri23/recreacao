@@ -32,7 +32,9 @@ export function setupCongregations({element,getPlayers}) {
     let suggestions = label.querySelector('.congregation-suggestions');
     if (!suggestions) { suggestions = element('div',null,'congregation-suggestions'); suggestions.setAttribute('aria-label','Congregações já cadastradas'); label.append(suggestions); }
     suggestions.replaceChildren();
-    const matches = congregationSuggestions(input.value,congregationOptions(getPlayers()));
+    const selectedCity = input.form?.elements.city?.value;
+    const known = congregationOptions(getPlayers()).filter(value => !selectedCity || !splitCongregation(value).city || splitCongregation(value).city === selectedCity);
+    const matches = congregationSuggestions(input.value,known);
     if (!matches.length) return;
     suggestions.append(element('small','Já existe uma congregação parecida. É a mesma?'));
     for (const match of matches) {
@@ -40,7 +42,7 @@ export function setupCongregations({element,getPlayers}) {
       button.onclick = () => {
         const parts = splitCongregation(match), city = input.form?.elements.city;
         input.value = city ? parts.congregation : match;
-        if (city && !city.disabled && parts.city) city.value = parts.city;
+        if (city && !city.disabled && !city.value && parts.city) city.value = parts.city;
         input.dispatchEvent(new Event('input',{bubbles:true})); input.focus();
       };
       suggestions.append(button);

@@ -2,7 +2,7 @@ export const CITIES = ['Belo Horizonte','Baldim','Betim','Caeté','Capim Branco'
 const key = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim().replace(/\s+/g,' ');
 export function cityName(value) { return CITIES.find(city => key(city) === key(value)) || (key(value) === 'bh' ? 'Belo Horizonte' : ''); }
 export function splitCongregation(value) {
-  const text = String(value || '').trim(), match = text.match(/^(.*?)\s+[-–—]\s*(.+)$/);
+  const text = String(value || '').trim(), match = text.match(/^(.*)\s+[-–—]\s*(.+)$/);
   const city = match && cityName(match[2]);
   return city ? {congregation:match[1].trim(),city} : {congregation:text,city:''};
 }
