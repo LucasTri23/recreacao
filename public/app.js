@@ -1,5 +1,5 @@
 import { firebaseConfig } from './firebase-config.js';
-import { identity, membership, playerId, mergedTeams, playerStatus, isActivePlayer, playerDetails,playerName,reviewKey } from './domain.js';
+import { identity, membership, playerId, mergedTeams, playerStatus, isActivePlayer, playerDetails,playerName,reviewKey,reusableIdentity } from './domain.js';
 import { setupDuplicates } from './duplicates.js';
 import { setupPages } from './pages.js';
 import { setupPlayerManagement } from './player-management.js';
@@ -8,7 +8,12 @@ import { setupTeamManagement } from './team-management.js';
 import { setupRoster } from './roster.js';
 import { setupHistory } from './history.js';
 import {setupCongregations,congregationOptions,standardCongregation} from './congregations.js';
+import {goalkeeperToggle} from './goalkeeper-toggle.js';
+import {citySelect,splitCongregation,cityCongregation} from './cities.js';
+import {setupNotifications} from './notifications.js';
+import {setupGameDay} from './game-day-ui.js';
 const $ = s => document.querySelector(s);
+const toast = setupNotifications(document);
 const mobileActions = window.matchMedia('(max-width:700px)');
 mobileActions.addEventListener('change',() => renderPlayers());
 let teamCatalog = structuredClone(DEFAULT_TEAMS);
@@ -25,20 +30,18 @@ const management = setupPlayerManagement({element,isAdmin:() => demo || profile?
 const teamManagement = setupTeamManagement({element,isAdmin:() => demo || profile?.role === 'admin',getTeams:() => teamCatalog,getPlayers:() => players,getUsers:() => accessUsers,mutate,toast});
 const roster = setupRoster({element,getPlayers:() => players,getTeams:() => teamCatalog,canExport:() => playersReady && teamsReady && (demo || ['admin','director'].includes(profile?.role)),toast});
 const history = setupHistory({element,getLogs:() => logs,getTeams:() => teamCatalog,getPlayers:() => [...players,...archivedPlayers],getUsers:() => accessUsers,canRead:() => demo || ['admin','director'].includes(profile?.role),canLoadMore:() => historyHasMore,isLoading:() => historyLoading,loadMore:() => historyLoader?.()});
+const gameDay = setupGameDay({element,getProfile:() => demo ? {role:'admin'} : profile,getUserId:() => user?.uid,getPlayers:() => players,getTeams:() => teamCatalog,mutate,toast,demo});
 setupCongregations({element,getPlayers:() => [...players,...archivedPlayers]});
 const statusFilter = element('select'); statusFilter.id = 'status-filter'; statusFilter.setAttribute('aria-label','Filtrar situação do jogador');
 for (const [value,label] of [['active','Ativos'],['inactive','Inativos'],['deleted','Excluídos'],['all','Todas as situações']]) { const option = element('option',label); option.value = value; statusFilter.append(option); }
 $('#team-filter').after(statusFilter); statusFilter.onchange = renderPlayers;
-const accessButton = element('button', '⚙ Gerenciar acessos');
+const accessButton = element('a', '⚙ Gerenciar acessos'); accessButton.href = '#/gerenciar-acessos'; accessButton.dataset.nav = 'gerenciar-acessos';
 accessButton.hidden = true;
 document.querySelector('nav').append(accessButton);
-const accessDialog = element('dialog');
-accessDialog.id = 'access-dialog';
+const accessDialog = element('section',null,'page-section');
+accessDialog.id = 'access-page'; accessDialog.dataset.page = 'gerenciar-acessos'; accessDialog.hidden = true;
 const accessTitle = element('div', null, 'dialog-title');
-const accessClose = element('button', '×', 'close');
-accessClose.setAttribute('aria-label','Fechar');
-accessClose.onclick = () => accessDialog.close();
-accessTitle.append(element('h2','Diretores e acessos'),accessClose);
+accessTitle.append(element('h2','Diretores e acessos'));
 const accessList = element('div');
 const accessSearch = element('input');
 accessSearch.type = 'search';
@@ -46,10 +49,13 @@ accessSearch.placeholder = 'Buscar diretor por nome, e-mail ou time';
 accessSearch.setAttribute('aria-label',accessSearch.placeholder);
 accessSearch.oninput = renderAccess;
 accessDialog.append(accessTitle,element('p','Escolha o time de cada diretor pelo e-mail da conta Google. Quem ainda não apareceu precisa entrar no site com Google uma vez.'),accessSearch,accessList);
-document.body.append(accessDialog);
-accessButton.onclick = () => { renderAccess(); accessDialog.showModal(); };
+document.querySelector('footer').before(accessDialog);
+accessButton.onclick = () => renderAccess();
 function renderAccess() {
   accessList.replaceChildren();
+  const authorized = profile?.role === 'admin';
+  accessSearch.hidden = !authorized;
+  if (!authorized) { accessList.append(element('p','Esta página é exclusiva da administração.')); return; }
   const query = identity(accessSearch.value, '').slice(0,-1);
   const sorted = accessUsers.filter(a => identity(`${a.displayName || ''} ${a.email || ''} ${teamName(a.team) || ''}`, '').includes(query)).sort((a,b) => (a.role === 'pending' ? 0 : 1) - (b.role === 'pending' ? 0 : 1) || (a.email || a.displayName || '').localeCompare(b.email || b.displayName || '','pt-BR'));
   if (!sorted.length) accessList.append(element('p','Nenhuma conta encontrada.'));
@@ -80,10 +86,10 @@ function renderAccess() {
 }
 const style = team => { const c = TEAM_COLORS[teamCatalog[team]?.color] || TEAM_COLORS.green; return `--team:${c.color};--soft:${c.soft};--ink:${c.ink}`; };
 function element(tag, text, className) { const e = document.createElement(tag); if (text != null) e.textContent = text; if (className) e.className = className; return e; }
-function toast(message) { $('#toast').textContent = message; $('#toast').style.display = 'block'; clearTimeout(toast.timer); toast.timer = setTimeout(() => $('#toast').style.display = 'none', 4500); }
 function allowed(team) { return demo || profile?.role === 'admin' || (profile?.role === 'director' && profile.team === team); }
 function options(select, teams) { select.replaceChildren(...teams.map(t => { const e = element('option', teamName(t)); e.value = t; return e; })); }
 function render() {
+  gameDay.refresh();
   $('#player-count').textContent = players.filter(isActivePlayer).length;
   statusFilter.hidden = !(demo || profile?.role === 'admin');
   if (statusFilter.hidden) statusFilter.value = 'active';
@@ -98,7 +104,7 @@ function render() {
   $('#window-label').textContent = windowOpen ? 'Janela aberta' : 'Janela fechada';
   $('#window-toggle').hidden = !(demo || profile?.role === 'admin');
   accessButton.hidden = profile?.role !== 'admin';
-  if (profile?.role !== 'admin' && accessDialog.open) accessDialog.close();
+  if (profile?.role !== 'admin') renderAccess();
   $('#login').textContent = demo ? 'Modo demonstração' : user ? `${profile?.role === 'admin' ? 'Administração' : teamName(profile?.team) || 'Sem acesso atribuído'} · Sair` : 'Entrar como diretor ↗';
   $('#team-grid').replaceChildren(...teamIds(true).map(team => {
     const count = players.filter(p => isActivePlayer(p) && p.teams.includes(team)).length;
@@ -129,8 +135,9 @@ function renderPlayers() {
     const row = element('tr'); const name = element('td'); const person = element('div', null, 'person');
     person.append(element('span', p.name.split(' ').filter(Boolean).slice(0,2).map(w => w[0]).join('').toUpperCase(), 'avatar'), element('span', playerName(p.name))); name.append(person);
     const teams = element('td'); p.teams.forEach(t => { const tag = element('span',teamName(t) + (teamActive(teamCatalog,t) ? '' : ' · inativo/excluído'), 'tag'); tag.style.cssText = style(t); teams.append(tag); });
-    const status = element('td', !isActivePlayer(p) ? playerStatus(p) === 'inactive' ? '● Inativo' : '● Excluído' : p.teams.length === 2 ? '● Dois times' : '● Um time', 'status'); const actions = element('td');
-    if (isActivePlayer(p) && p.teams.length < 2 && teamIds(true).some(t => allowed(t) && !p.teams.includes(t))) { const b = element('button', 'Adicionar a outro time ＋', 'row-action'); b.onclick = () => openAdd(p); actions.append(b); }
+    const status = element('td', !isActivePlayer(p) ? playerStatus(p) === 'inactive' ? '● Inativo' : '● Excluído' : p.goalkeeper ? `🧤 Goleiro · ${p.teams.length} time(s)` : p.teams.length === 2 ? '● Dois times' : '● Um time', 'status'); const actions = element('td');
+    if (p.goalkeeper) person.append(element('span','🧤 Goleiro','goalkeeper-badge'));
+    if (isActivePlayer(p) && (p.goalkeeper || p.teams.length < 2) && teamIds(true).some(t => allowed(t) && !p.teams.includes(t))) { const b = element('button', 'Adicionar a outro time ＋', 'row-action'); b.onclick = () => openAdd(p); actions.append(b); }
     if (isActivePlayer(p) && windowOpen && p.teams.some(allowed) && teamIds(true).some(t => !p.teams.includes(t))) { const b = element('button', 'Transferir ↔', 'row-action'); b.onclick = () => openTransfer(p); actions.append(b); }
     if (demo || profile?.role === 'admin') actions.append(...management.actions(p));
     if (mobileActions.matches && actions.children.length) {
@@ -149,12 +156,18 @@ function openAdd(player = null) {
   if (player && !isActivePlayer(player)) return toast('Peça à administração para reativar este jogador antes de inscrevê-lo.');
   const teams = teamIds(true).filter(t => allowed(t) && !player?.teams.includes(t));
   if (!teams.length) return toast('Não há um time ativo disponível para sua conta cadastrar este jogador.');
-  $('#player-form').reset(); $('#player-form .form-error').textContent = ''; options($('#player-form select'), teams);
+  $('#player-form').reset(); $('#player-form .form-error').textContent = ''; options($('#player-form [name=team]'), teams);
+  const location = splitCongregation(player?.congregation || '');
+  $('#player-form').dataset.playerId = player?.id || '';
+  $('#player-form [name=city]').value = player?.city || location.city;
+  $('#player-form [name=city]').disabled = !!player;
+  $('#player-form [name=goalkeeper]').checked = player?.goalkeeper === true;
+  $('#player-form [name=goalkeeper]').disabled = !!player;
   for (const field of ['name','congregation']) {
     const input = $(`#player-form [name=${field}]`);
-    input.value = player?.[field] || ''; input.readOnly = !!player;
+    input.value = field === 'congregation' ? location.congregation : player?.[field] || ''; input.readOnly = !!player;
   }
-  if (teams.includes($('#team-filter').value)) $('#player-form select').value = $('#team-filter').value;
+  if (teams.includes($('#team-filter').value)) $('#player-form [name=team]').value = $('#team-filter').value;
   $('#player-dialog').showModal();
   duplicates.suggest();
 }
@@ -165,6 +178,7 @@ function openTransfer(p) {
 function saveDemo() { localStorage.setItem('recreacao-demo-v1', JSON.stringify({ players, archivedPlayers, logs, windowOpen,teamCatalog,reviews })); render(); }
 async function mutate(action, data) {
   if (['addPlayer','editPlayer'].includes(action)) data = {...data,congregation:standardCongregation(data.congregation,congregationOptions([...players,...archivedPlayers]))};
+  if (['addPlayer','editPlayer'].includes(action) && 'city' in data) data = {...data,...cityCongregation(data.congregation,data.city,congregationOptions([...players,...archivedPlayers]))};
   if (!demo) { await api(action, data); return; }
   if (action === 'reviewDuplicates') {
     const [sourceId,targetId] = [data.sourceId,data.targetId].sort();
@@ -201,9 +215,11 @@ async function mutate(action, data) {
     } else {
       if (playerStatus(p) === 'deleted') throw Error('Restaure o jogador antes de editar.');
       const details = playerDetails(data), id = await playerId(details.name,details.congregation);
-      if (id !== p.id && [...players,...archivedPlayers].some(other => other.id === id)) throw Error('Já existe um cadastro com esse nome e congregação. Use a revisão de duplicidades.');
+      if (!(details.goalkeeper ?? p.goalkeeper) && p.teams.length > 2) throw Error('Reduza as inscrições para até dois times antes de desmarcar goleiro.');
+      const target = [...players,...archivedPlayers].find(other => other.id === id);
+      if (id !== p.id && target && !await reusableIdentity(target,p.id,async key => [...players,...archivedPlayers].find(other => other.id === key))) throw Error('Já existe outro cadastro com esse nome, congregação e cidade. Use a revisão de duplicidades.');
       logs.unshift({kind:'edit',playerId:id,sourceId:p.id,previousName:p.name,teams:[...p.teams],name:details.name,detail:`Cadastro editado: ${p.name} (${playerName(p.congregation)}) → ${details.name} (${details.congregation}).`,at:Date.now()});
-      if (id !== p.id) archivedPlayers.push({...p,teams:[],mergedInto:id});
+      if (id !== p.id) { archivedPlayers = archivedPlayers.filter(other => other.id !== id); archivedPlayers.push({...p,teams:[],mergedInto:id}); }
       Object.assign(p,details,{id});
     }
   }
@@ -234,13 +250,22 @@ function submit(form, action, getData, dialog, success) {
     catch(e) { $(form + ' .form-error').textContent = e.message; } finally { button.disabled = false; }
   };
 }
-submit('#player-form','addPlayer', f => Object.fromEntries(f), '#player-dialog', 'Jogador adicionado ao time.');
+$('#player-form [name=team]').closest('label').before(goalkeeperToggle(element));
+$('#player-form [name=congregation]').closest('label').after(citySelect(element));
+$('#player-form .form-note').textContent = '↔ Jogadores de linha: até dois times. Goleiros: sem limite de times. Em cadastros existentes, só o admin altera essa opção em Editar.';
+submit('#player-form','addPlayer', f => {
+  const data = {...Object.fromEntries(f),goalkeeper:$('#player-form [name=goalkeeper]').checked};
+  const city = $('#player-form [name=city]');
+  if (city.disabled) { const original = players.find(p => p.id === $('#player-form').dataset.playerId); if (original) data.congregation = original.congregation; }
+  else data.city = city.value;
+  return data;
+}, '#player-dialog', 'Jogador adicionado ao time.');
 submit('#transfer-form','transferPlayer', f => ({ ...Object.fromEntries(f), id:transferring }), '#transfer-dialog', 'Transferência registrada.');
 $('#window-toggle').onclick = async () => { try { await mutate('setWindow', { open:!windowOpen }); toast('Janela atualizada.'); } catch(e) { toast(e.message); } };
 function renderHistory() {
   history.refresh();
 }
-setupPages(() => { duplicates.refresh(); teamManagement.refresh(); renderHistory(); });
+setupPages(() => { duplicates.refresh(); teamManagement.refresh(); gameDay.refresh(); renderAccess(); renderHistory(); });
 if (demo) {
   try { const stored = JSON.parse(localStorage.getItem('recreacao-demo-v1')); if (stored) { ({ players, logs, windowOpen } = stored); archivedPlayers = stored.archivedPlayers || []; teamCatalog = stored.teamCatalog || structuredClone(DEFAULT_TEAMS); reviews = stored.reviews || []; } } catch { localStorage.removeItem('recreacao-demo-v1'); }
   $('#mode-notice').textContent = 'Demonstração local · Experimente os cadastros e transferências. Os dados ficam apenas neste navegador até conectar o Firebase.';
@@ -254,6 +279,7 @@ if (demo) {
     const app = appSDK.initializeApp(firebaseConfig), auth = authSDK.getAuth(app), db = dbSDK.getFirestore(app);
     const { createFirebaseApi, ensureAccessProfile } = await import('./firebase-store.js');
     api = createFirebaseApi(dbSDK, db, auth,() => congregationOptions([...players,...archivedPlayers]));
+    gameDay.connect(dbSDK,db);
     $('#login').onclick = async () => { try { if (auth.currentUser) await authSDK.signOut(auth); else await authSDK.signInWithPopup(auth, new authSDK.GoogleAuthProvider()); } catch(e) { toast(e.message); } };
     let unsubscribers = [], dataSubscriptions = [], authVersion = 0;
     authSDK.onAuthStateChanged(auth, async current => {

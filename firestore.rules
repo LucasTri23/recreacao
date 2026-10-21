@@ -11,23 +11,31 @@ service cloud.firestore {
     function active(p) { return !('mergedInto' in p) && p.get('status','active') == 'active'; }
     function playerAction(p) { return getAfter(/databases/$(database)/documents/events/$(p.lastEvent)).data.kind; }
     function normalized(s) {
-      return s.lower().replace('[àáâãäå]', 'a').replace('[èéêë]', 'e')
-        .replace('[ìíîï]', 'i').replace('[òóôõö]', 'o').replace('[ùúûü]', 'u')
-        .replace('ç', 'c').replace('ñ', 'n').replace('[ýÿ]', 'y')
+      // Rules lower() preserves accented uppercase letters; handle both cases.
+      return s.lower().replace('[àáâãäåÀÁÂÃÄÅ]', 'a').replace('[èéêëÈÉÊË]', 'e')
+        .replace('[ìíîïÌÍÎÏ]', 'i').replace('[òóôõöÒÓÔÕÖ]', 'o').replace('[ùúûüÙÚÛÜ]', 'u')
+        .replace('[çÇ]', 'c').replace('[ñÑ]', 'n').replace('[ýÿÝŸ]', 'y')
         .replace('[̀-ͯ]', '').trim().replace('\\s+', ' ');
     }
     function validPlayer(id, p) {
       return p.keys().hasAll(['name','congregation','teams','updatedAt','lastEvent'])
-        && p.keys().hasOnly(['name','congregation','teams','updatedAt','lastEvent','status'])
+        && p.keys().hasOnly(['name','congregation','city','teams','updatedAt','lastEvent','status','goalkeeper'])
+        && (!('city' in p) || validPlayerCity(p))
+        && p.get('goalkeeper',false) is bool
         && p.get('status','active') in ['active','inactive','deleted']
         && p.name is string && p.name.size() >= 3 && p.name.size() <= 120
         && p.congregation is string && p.congregation.size() >= 2 && p.congregation.size() <= 120
         && !p.name.matches('.*[|].*') && !p.congregation.matches('.*[|].*')
         && id == hashing.sha256(normalized(p.name) + '|' + normalized(p.congregation)).toHexString().lower()
-        && p.teams is list && p.teams.size() >= 1 && p.teams.size() <= 2
+        && p.teams is list && p.teams.size() >= 1 && (p.get('goalkeeper',false) || p.teams.size() <= 2)
         && p.teams.toSet().size() == p.teams.size()
         && teamCatalog().keys().hasAll(p.teams)
         && p.updatedAt == request.time && p.lastEvent is string;
+    }
+    function validPlayerCity(p) {
+      return p.city in ['Belo Horizonte','Baldim','Betim','Caeté','Capim Branco','Confins','Contagem','Conselheiro Lafaiete','Esmeraldas','Florestal','Ibirité','Igarapé','Itaguara','Itatiaiuçu','Jaboticatubas','Juatuba','Lagoa Santa','Mário Campos','Mateus Leme','Matozinhos','Nova Lima','Nova União','Pedro Leopoldo','Raposos','Ribeirão das Neves','Rio Acima','Rio Manso','Sabará','Santa Luzia','São Joaquim de Bicas','São José da Lapa','Sarzedo','Taquaraçu de Minas','Vespasiano']
+        && (normalized(p.congregation).matches('.* [-–—] '+normalized(p.city))
+          || (p.city == 'Belo Horizonte' && normalized(p.congregation).matches('.* [-–—] bh')));
     }
     function playerEvent(id, p, kind, from, to) {
       let e = getAfter(/databases/$(database)/documents/events/$(p.lastEvent)).data;
@@ -86,6 +94,20 @@ service cloud.firestore {
         && p.lastEvent == eventId && old.lastEvent != eventId
         && e.detail is string && e.detail.size() <= 1000;
     }
+    function aliasTail(id,source) {
+      let p = get(/databases/$(database)/documents/players/$(id)).data;
+      return p.teams == [] && p.get('mergedInto','') == source;
+    }
+    function aliasMiddle(id,source) {
+      let p = get(/databases/$(database)/documents/players/$(id)).data;
+      let next = p.get('mergedInto','');
+      return p.teams == [] && (next == source || (next != '' && aliasTail(next,source)));
+    }
+    function reusableIdentity(id,source) {
+      let p = get(/databases/$(database)/documents/players/$(id)).data;
+      let next = p.get('mergedInto','');
+      return p.teams == [] && (next == source || (next != '' && aliasMiddle(next,source)));
+    }
     function validEdit(eventId) {
       let e = getAfter(/databases/$(database)/documents/events/$(eventId)).data;
       let old = get(/databases/$(database)/documents/players/$(e.sourceId)).data;
@@ -97,9 +119,9 @@ service cloud.firestore {
         && !('mergedInto' in old) && old.get('status','active') != 'deleted'
         && validPlayer(e.playerId,p) && e.name == p.name && e.congregation == p.congregation
         && e.previousName == old.name && e.previousCongregation == old.congregation
-        && p.diff(old).affectedKeys().hasOnly(['name','congregation','updatedAt','lastEvent'])
+        && p.diff(old).affectedKeys().hasOnly(['name','congregation','city','goalkeeper','updatedAt','lastEvent'])
         && p.lastEvent == eventId && old.lastEvent != eventId
-        && (e.sourceId == e.playerId || (!exists(/databases/$(database)/documents/players/$(e.playerId))
+        && (e.sourceId == e.playerId || ((!exists(/databases/$(database)/documents/players/$(e.playerId)) || reusableIdentity(e.playerId,e.sourceId))
           && archived.diff(old).affectedKeys().hasOnly(['teams','mergedInto','updatedAt','lastEvent'])
           && archived.teams == [] && archived.mergedInto == e.playerId
           && archived.lastEvent == eventId && archived.updatedAt == request.time))
@@ -150,6 +172,92 @@ service cloud.firestore {
       allow create, update: if admin() && validDuplicateReview(id);
       allow delete: if false;
     }
+    function gameDate(day) {
+      let parts = day.split('-');
+      return timestamp.date(int(parts[0]),int(parts[1]),int(parts[2]));
+    }
+    function gamePermission(weekId,teamId) {
+      let week = get(/databases/$(database)/documents/gameWeeks/$(weekId)).data;
+      return manages(teamId) && teamActive(teamId) && teamId in week.teams
+        && (admin() || (week.status == 'open' && request.time.toMillis() < week.deadline));
+    }
+    function validGameWeek(weekId,p) {
+      let day = gameDate(p.gameDate);
+      let start = gameDate(weekId);
+      let cutoff = gameDate(p.cutoff);
+      let e = getAfter(/databases/$(database)/documents/events/$(p.lastEvent)).data;
+      return admin() && p.keys().hasAll(['weekId','gameDate','cutoff','deadline','teams','status','notes','updatedAt','lastEvent'])
+        && p.keys().hasOnly(['weekId','gameDate','cutoff','deadline','teams','teamNames','matchTimes','matchFields','status','notes','updatedAt','lastEvent'])
+        && p.teamNames is map && p.teamNames.keys().hasAll(p.teams) && p.teamNames.keys().hasOnly(p.teams)
+        && weekId.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}') && p.weekId == weekId
+        && p.gameDate.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}') && p.cutoff.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}')
+        && start.dayOfWeek() == 1 && day >= start && day < start + duration.value(7,'d')
+        && cutoff.dayOfWeek() == 4 && cutoff <= day && cutoff > day - duration.value(7,'d')
+        && p.deadline is int && p.deadline == cutoff.toMillis() + 97200000
+        && p.teams is list && (p.teams.size() >= 2 || p.status == 'closed') && p.teams.size() <= 100 && p.teams.size() % 2 == 0 && p.teams.toSet().size() == p.teams.size()
+        && p.matchTimes is list && p.matchTimes.size() * 2 == p.teams.size()
+        && p.matchFields is list && p.matchFields.size() == p.matchTimes.size()
+        && (p.matchTimes.size() == 0 || ('#'+p.matchTimes.join('|')+'#').split('\\|').size() == p.matchTimes.size())
+        && (p.matchFields.size() == 0 || ('#'+p.matchFields.join('|')+'#').split('\\|').size() == p.matchFields.size())
+        && p.matchTimes.join('|').matches('(([01][0-9]|2[0-3]):[0-5][0-9])?(\\|(([01][0-9]|2[0-3]):[0-5][0-9])?)*')
+        && p.matchFields.join('|').matches('[^|\\r\\n]{0,120}(\\|[^|\\r\\n]{0,120})*')
+        && teamCatalog().keys().hasAll(p.teams)
+        && p.status in ['open','closed'] && p.notes is string && p.notes.size() <= 500 && p.updatedAt == request.time
+        && e.kind == 'gameWeek' && e.weekId == weekId && e.teams == p.teams && e.actor == request.auth.uid && e.at == request.time;
+    }
+    function validGameSquad(id,p) {
+      let draft = get(/databases/$(database)/documents/gameDrafts/$(p.draftId)).data;
+      let e = getAfter(/databases/$(database)/documents/events/$(p.lastEvent)).data;
+      return member() && p.keys().hasAll(['weekId','teamId','draftId','submittedBy','updatedAt','lastEvent'])
+        && p.keys().hasOnly(['weekId','teamId','draftId','submittedBy','updatedAt','lastEvent'])
+        && id == p.weekId + '_' + p.teamId && p.submittedBy == request.auth.uid && p.updatedAt == request.time
+        && gamePermission(p.weekId,p.teamId) && draft.actor == request.auth.uid && draft.squadId == id
+        && draft.weekId == p.weekId && draft.teamId == p.teamId
+        && p.lastEvent == p.draftId && e.kind == 'gameSquad' && e.weekId == p.weekId && e.teamId == p.teamId
+        && e.draftId == p.draftId && e.actor == request.auth.uid && e.at == request.time;
+    }
+    match /gameWeeks/{id} {
+      allow read: if true;
+      allow create, update: if admin() && validGameWeek(id,request.resource.data);
+      allow delete: if false;
+    }
+    match /gameDrafts/{id} {
+      allow read: if member();
+      allow create: if member() && request.resource.data.keys().hasAll(['weekId','teamId','squadId','actor','createdAt','baseDraft'])
+        && request.resource.data.keys().hasOnly(['weekId','teamId','squadId','actor','createdAt','baseDraft'])
+        && request.resource.data.actor == request.auth.uid && request.resource.data.createdAt == request.time
+        && request.resource.data.squadId == request.resource.data.weekId + '_' + request.resource.data.teamId
+        && request.resource.data.baseDraft is string
+        && gamePermission(request.resource.data.weekId,request.resource.data.teamId);
+      allow update, delete: if false;
+    }
+    match /gameEntries/{id} {
+      allow read: if exists(/databases/$(database)/documents/gameSquads/$(resource.data.weekId + '_' + resource.data.teamId))
+        && get(/databases/$(database)/documents/gameSquads/$(resource.data.weekId + '_' + resource.data.teamId)).data.draftId == resource.data.draftId;
+      allow create: if member() && validGameEntry(id,request.resource.data);
+      allow update, delete: if false;
+    }
+    function validGameEntry(id,p) {
+      let draft = get(/databases/$(database)/documents/gameDrafts/$(p.draftId)).data;
+      let player = p.playerId == '' ? null : get(/databases/$(database)/documents/players/$(p.playerId)).data;
+      return p.keys().hasAll(['draftId','weekId','teamId','playerId','position','rawName','name','issue','actor','updatedAt'])
+        && p.keys().hasOnly(['draftId','weekId','teamId','playerId','position','rawName','name','issue','actor','updatedAt'])
+        && p.position is int && p.position >= 0 && p.position < 50 && id == p.draftId + '_' + string(p.position)
+        && p.rawName is string && p.rawName.size() >= 1 && p.rawName.size() <= 160
+        && p.actor == request.auth.uid && p.updatedAt == request.time && draft.actor == request.auth.uid
+        && draft.weekId == p.weekId && draft.teamId == p.teamId && gamePermission(p.weekId,p.teamId)
+        && ((p.playerId == '' && p.name == p.rawName && p.issue == 'unknown')
+          || (p.playerId.matches('[a-f0-9]{64}') && p.name == player.name
+            && p.issue == (!active(player) ? 'inactive' : !(p.teamId in player.teams) ? 'otherTeam' : 'ok')));
+    }
+    match /gameSquads/{id} {
+      allow read: if true;
+      allow create: if validGameSquad(id,request.resource.data)
+        && get(/databases/$(database)/documents/gameDrafts/$(request.resource.data.draftId)).data.baseDraft == '';
+      allow update: if validGameSquad(id,request.resource.data)
+        && get(/databases/$(database)/documents/gameDrafts/$(request.resource.data.draftId)).data.baseDraft == resource.data.draftId;
+      allow delete: if admin() && !(resource.data.teamId in getAfter(/databases/$(database)/documents/gameWeeks/$(resource.data.weekId)).data.teams);
+    }
     match /users/{uid} {
       allow get: if request.auth != null && (request.auth.uid == uid || admin());
       allow list: if admin();
@@ -176,6 +284,7 @@ service cloud.firestore {
     match /players/{id} {
       allow read: if member();
       allow create: if member() && playerAction(request.resource.data) == 'add' && validPlayer(id, request.resource.data)
+        && 'city' in request.resource.data
         && active(request.resource.data)
         && request.resource.data.teams.size() == 1 && manages(request.resource.data.teams[0]) && teamActive(request.resource.data.teams[0])
         && playerEvent(id, request.resource.data, 'add', '', request.resource.data.teams[0]);
@@ -216,6 +325,15 @@ service cloud.firestore {
       allow create: if member() && request.resource.data.actor == request.auth.uid
         && (!('actorName' in request.resource.data) || request.resource.data.actorName == profile().get('displayName',profile().get('email','Diretor')))
         && request.resource.data.at == request.time && (
+          (request.resource.data.kind == 'gameWeek'
+            && request.resource.data.keys().hasOnly(['actor','actorName','at','kind','weekId','teams','name','detail'])
+            && validGameWeek(request.resource.data.weekId,getAfter(/databases/$(database)/documents/gameWeeks/$(request.resource.data.weekId)).data)
+            && getAfter(/databases/$(database)/documents/gameWeeks/$(request.resource.data.weekId)).data.lastEvent == id)
+          || (request.resource.data.kind == 'gameSquad'
+            && request.resource.data.keys().hasOnly(['actor','actorName','at','kind','weekId','teamId','draftId','name','detail'])
+            && validGameSquad(request.resource.data.weekId + '_' + request.resource.data.teamId,getAfter(/databases/$(database)/documents/gameSquads/$(request.resource.data.weekId + '_' + request.resource.data.teamId)).data)
+            && getAfter(/databases/$(database)/documents/gameSquads/$(request.resource.data.weekId + '_' + request.resource.data.teamId)).data.lastEvent == id)
+          ||
           (request.resource.data.kind == 'merge' && validMerge(id))
           || (request.resource.data.kind == 'duplicateReview' && validDuplicateReview(request.resource.data.reviewId)
             && getAfter(/databases/$(database)/documents/duplicateReviews/$(request.resource.data.reviewId)).data.lastEvent == id)

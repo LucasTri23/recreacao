@@ -19,6 +19,54 @@ function setup(profile, seed = {}) {
   };
   return {api:createFirebaseApi(sdk, {}, {currentUser:{uid:'director'}}), records, sdk};
 }
+
+test('admin cadastra UZIEL LUCAS no PRETO com congregação acentuada e sem vínculo de time', async () => {
+  const {api,records} = setup({role:'admin',displayName:'Outro Admin',email:'admin@example.com'});
+  await api('addPlayer',{name:'UZIEL LUCAS',congregation:'GLÓRIA - BH',team:'PRETO'});
+  const id = await playerId('UZIEL LUCAS','GLÓRIA - BH');
+  assert.deepEqual(records.get('players/'+id).teams,['PRETO']);
+  assert.equal(records.get('players/'+id).congregation,'GLÓRIA - BH');
+  assert.equal(records.get('events/e1').actorName,'Outro Admin');
+});
+test('cidade obrigatória no formulário compõe a identidade e edição preserva abreviação antiga', async () => {
+  const {api,records,sdk} = setup({role:'admin'});
+  await api('addPlayer',{name:'Cidade Teste',congregation:'Vera Cruz de Minas',city:'Pedro Leopoldo',team:'PRETO'});
+  const id = await playerId('Cidade Teste','VERA CRUZ DE MINAS - PEDRO LEOPOLDO');
+  assert.equal(records.get('players/'+id).city,'Pedro Leopoldo');
+  await assert.rejects(api('addPlayer',{name:'Cidade Inválida',congregation:'Centro',city:'Outra',team:'PRETO'}),/cidade da lista/);
+  const oldId = await playerId('Antigo Teste','GLÓRIA - BH');
+  records.set('players/'+oldId,{name:'ANTIGO TESTE',congregation:'GLÓRIA - BH',teams:['PRETO'],updatedAt:1,lastEvent:'old'});
+  const legacyApi = createFirebaseApi(sdk,{}, {currentUser:{uid:'director'}},() => ['GLÓRIA - BH']);
+  await legacyApi('editPlayer',{id:oldId,name:'Antigo Teste',congregation:'Glória',city:'Belo Horizonte'});
+  assert.equal(records.get('players/'+oldId).city,'Belo Horizonte');
+  assert.equal(records.get('players/'+oldId).congregation,'GLÓRIA - BH');
+  assert.equal(records.get('players/'+oldId).mergedInto,undefined);
+  await legacyApi('addPlayer',{name:'Antigo Teste',congregation:'Glória',city:'Belo Horizonte',team:'BRANCO'});
+  assert.deepEqual(records.get('players/'+oldId).teams,['PRETO','BRANCO']);
+});
+test('goleiro entra em três times, não duplica inscrição e só admin muda a classificação existente', async () => {
+  const {api,records} = setup({role:'admin'});
+  const id = await playerId('Goleiro Teste','Centro');
+  await api('addPlayer',{name:'Goleiro Teste',congregation:'Centro',team:'PRETO',goalkeeper:true});
+  for (const team of ['BRANCO','VERDE']) await api('addPlayer',{name:'Goleiro Teste',congregation:'Centro',team,goalkeeper:false});
+  assert.deepEqual(records.get('players/'+id).teams,['PRETO','BRANCO','VERDE']);
+  assert.equal(records.get('players/'+id).goalkeeper,true);
+  await assert.rejects(api('addPlayer',{name:'Goleiro Teste',congregation:'Centro',team:'PRETO'}),/já está/);
+  await assert.rejects(api('editPlayer',{id,name:'Goleiro Teste',congregation:'Centro',goalkeeper:false}),/Reduza/);
+  await api('editPlayer',{id,name:'Goleiro Alterado',congregation:'Centro',goalkeeper:true});
+  assert.equal(records.get('players/'+await playerId('Goleiro Alterado','Centro')).teams.length,3);
+});
+test('marcar goleiro no envio não promove jogador já existente; admin pode editar primeiro', async () => {
+  const {api,records} = setup({role:'admin'});
+  const data = {name:'Linha Teste',congregation:'Centro'}, id = await playerId(data.name,data.congregation);
+  for (const team of ['PRETO','BRANCO']) await api('addPlayer',{...data,team});
+  await assert.rejects(api('addPlayer',{...data,team:'VERDE',goalkeeper:true}),/dois times/);
+  await api('editPlayer',{id,...data,goalkeeper:true});
+  await api('addPlayer',{...data,team:'VERDE'});
+  assert.equal(records.get('players/'+id).teams.length,3);
+  records.set('users/director',{role:'director',team:'PRETO'});
+  await assert.rejects(api('editPlayer',{id,...data,goalkeeper:false}),/administração/);
+});
 test('inscrição persiste jogador e histórico juntos e rejeita outro time', async () => {
   const {api,records} = setup({role:'director',team:'VERDE',displayName:'João Diretor'});
   await assert.rejects(api('addPlayer',{name:'João Silva',congregation:'Centro',team:'BLUES'}),/próprio time/);
@@ -207,6 +255,23 @@ test('edição rejeita identidade existente e dados inválidos; ajuste de caixa 
   assert.equal(records.get(`players/${sourceId}`).mergedInto,undefined);
 });
 
+test('troca de cidade permite voltar a identidade antiga sem perder times, goleiro ou situação', async () => {
+  const {api,records,sdk} = setup({role:'admin'});
+  const name = 'Cidade Retorno', base = {name,congregation:'Centro',goalkeeper:true};
+  await api('addPlayer',{...base,city:'Betim',team:'PRETO'});
+  const known = () => [...records.entries()].filter(([key]) => key.startsWith('players/')).map(([,p]) => p.congregation);
+  const editApi = createFirebaseApi(sdk,{}, {currentUser:{uid:'director'}},known);
+  let currentId = await playerId(name,'CENTRO - BETIM');
+  for (const city of ['Contagem','Vespasiano','Betim','Contagem']) {
+    await editApi('editPlayer',{id:currentId,...base,city});
+    currentId = await playerId(name,'CENTRO - '+city);
+    const p = records.get('players/'+currentId);
+    assert.equal(p.mergedInto,undefined); assert.equal(p.city,city); assert.equal(p.goalkeeper,true); assert.deepEqual(p.teams,['PRETO']);
+  }
+  await editApi('addPlayer',{...base,city:'Betim',team:'BRANCO'});
+  assert.deepEqual(records.get('players/'+currentId).teams,['PRETO','BRANCO']);
+  assert.equal([...records.entries()].filter(([key,p]) => key.startsWith('players/') && !p.mergedInto).length,1);
+});
 test('admin cria time dinâmico e inscreve jogador, vincula diretor e transfere para ele', async () => {
   const id = await playerId('João Silva','Centro');
   const {api,records} = setup({role:'admin'},{'users/new':{role:'pending',team:''},'settings/transfers':{open:true}});

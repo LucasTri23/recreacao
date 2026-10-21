@@ -1,3 +1,4 @@
+import {cityCongregation} from './cities.js';
 export const TEAMS = ['BRANCO','PRETO','BLUES','COIOTES','VETOR NORTE','AMARELO','LARANJA','VERDE'];
 export const playerStatus = player => player.status || 'active';
 export const isActivePlayer = player => !player.mergedInto && playerStatus(player) === 'active';
@@ -5,11 +6,22 @@ export const playerName = name => String(name || '').toLocaleUpperCase('pt-BR');
 export function playerDetails(data) {
   const name = playerName(data.name).trim().replace(/\s+/g,' '), congregation = playerName(data.congregation).trim().replace(/\s+/g,' ');
   if (name.length < 3 || name.length > 120 || congregation.length < 2 || congregation.length > 120 || /[|]/.test(name + congregation)) throw Error('Informe nome completo e congregação válidos (até 120 caracteres, sem |).');
-  return {name,congregation};
+  if ('goalkeeper' in data && typeof data.goalkeeper !== 'boolean') throw Error('Informe se o jogador é goleiro.');
+  return {name,congregation,...('city' in data ? cityCongregation(congregation,data.city,[congregation]) : {}),...('goalkeeper' in data ? {goalkeeper:data.goalkeeper} : {})};
 }
 export function identity(name, congregation) {
   const clean = value => value.toLowerCase().replace(/[àáâãäå]/g,'a').replace(/[èéêë]/g,'e').replace(/[ìíîï]/g,'i').replace(/[òóôõö]/g,'o').replace(/[ùúûü]/g,'u').replace(/ç/g,'c').replace(/ñ/g,'n').replace(/[ýÿ]/g,'y').replace(/[\u0300-\u036f]/g,'').trim().replace(/\s+/g, ' ');
   return `${clean(name)}|${clean(congregation)}`;
+}
+// Only a retired identity owned by this same player can be reused on edit.
+export async function reusableIdentity(target,sourceId,read) {
+  const visited = new Set();
+  for (let hop=0;hop<3;hop++) {
+    if (!target?.mergedInto || target.teams?.length !== 0 || visited.has(target.mergedInto)) return false;
+    if (target.mergedInto === sourceId) return true;
+    visited.add(target.mergedInto); target = await read(target.mergedInto);
+  }
+  return false;
 }
 export function membership(player, team, destination = null) {
   const teams = [...player.teams];
@@ -19,7 +31,7 @@ export function membership(player, team, destination = null) {
     return teams.map(t => t === team ? destination : t);
   }
   if (teams.includes(team)) throw Error('Este jogador já está neste time.');
-  if (teams.length >= 2) throw Error('Este jogador já participa de dois times. Use a transferência durante a janela.');
+  if (!player.goalkeeper && teams.length >= 2) throw Error('Este jogador já participa de dois times. Use a transferência durante a janela.');
   return [...teams, team];
 }
 export async function playerId(name, congregation) {
@@ -73,6 +85,6 @@ export function duplicatePairs(players,reviews = []) {
 }
 export function mergedTeams(source, target) {
   const teams = [...new Set([...target.teams,...source.teams])];
-  if (teams.length > 2) throw Error('Esses cadastros somam mais de dois times. Regularize as inscrições antes de unificar.');
+  if (!target.goalkeeper && teams.length > 2) throw Error('Esses cadastros somam mais de dois times. Regularize as inscrições antes de unificar.');
   return teams;
 }

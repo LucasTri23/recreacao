@@ -7,12 +7,14 @@
     "build": "node scripts/build.mjs",
     "test": "node --test",
     "test:rules": "node scripts/check-edit-rules.mjs",
+    "test:game-rules": "node scripts/check-game-rules.mjs",
     "start": "node server.mjs",
     "firebase:login": "firebase login",
     "deploy": "firebase deploy --only firestore:rules",
     "deploy:rules": "firebase deploy --only firestore:rules"
   },
   "devDependencies": {
-    "firebase-tools": "^15.33.0"
+    "firebase-tools": "^15.33.0",
+    "linkedom": "^0.18.13"
   }
 }

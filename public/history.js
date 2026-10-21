@@ -1,5 +1,5 @@
 import {identity} from './domain.js';
-export const HISTORY_ACTIONS = {add:'Inscrição',transfer:'Transferência',edit:'Edição de jogador',status:'Situação do jogador',merge:'Unificação de cadastros',duplicateReview:'Revisão de duplicidade',team:'Gerenciamento de time',window:'Janela de transferências',legacy:'Registro antigo'};
+export const HISTORY_ACTIONS = {add:'Inscrição',transfer:'Transferência',edit:'Edição de jogador',status:'Situação do jogador',merge:'Unificação de cadastros',duplicateReview:'Revisão de duplicidade',team:'Gerenciamento de time',window:'Janela de transferências',gameWeek:'Programação do jogo',gameSquad:'Escalação da semana',legacy:'Registro antigo'};
 const clean = text => identity(String(text || ''),'').slice(0,-1);
 export function eventTime(event) {
   const value = event.at?.toMillis?.() ?? (event.at instanceof Date ? event.at.getTime() : typeof event.at === 'object' && event.at ? event.at.seconds * 1000 : event.at);
