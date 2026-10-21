@@ -18,14 +18,14 @@ export function gameWeekDetails(data,teams) {
   dateValue(data.gameDate);
   if (!Array.isArray(data.teams)) throw Error('Escolha os times da semana.');
   const ids = [...data.teams];
-  if ((ids.length === 0 && data.status !== 'closed') || ids.length > 100 || ids.length % 2) throw Error('Cada confronto precisa de dois times. Complete ou remova o confronto incompleto.');
-  if (new Set(ids).size !== ids.length) throw Error('Um time não pode participar de mais de um confronto na mesma rodada.');
-  if (!ids.every(id => Object.hasOwn(teams,id) && teams[id].status === 'active')) throw Error('Escolha apenas times ativos para os confrontos.');
+  if ((ids.length === 0 && data.status !== 'closed') || ids.length > 100 || ids.length % 2) throw Error('Cada jogo precisa de dois times. Complete ou remova o jogo incompleto.');
+  if (new Set(ids).size !== ids.length) throw Error('Um time não pode participar de mais de um jogo na mesma programação.');
+  if (!ids.every(id => Object.hasOwn(teams,id) && teams[id].status === 'active')) throw Error('Escolha apenas times ativos para os jogos.');
   if (!['open','closed'].includes(data.status)) throw Error('Situação da semana inválida.');
   const notes = String(data.notes || '').trim(); if (notes.length > 500) throw Error('As observações devem ter até 500 caracteres.');
   const count = ids.length/2;
   const matchTimes = data.matchTimes ?? Array(count).fill(''), matchFields = data.matchFields ?? Array(count).fill('');
-  if (!Array.isArray(matchTimes) || !Array.isArray(matchFields) || matchTimes.length !== count || matchFields.length !== count) throw Error('Informe horário e campo para cada confronto.');
+  if (!Array.isArray(matchTimes) || !Array.isArray(matchFields) || matchTimes.length !== count || matchFields.length !== count) throw Error('Informe horário e campo para cada jogo.');
   if (!matchTimes.every(time => typeof time === 'string' && (time === '' || /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time)))) throw Error('Horário inválido. Use o formato HH:MM.');
   if (!matchFields.every(field => typeof field === 'string' && field.trim().length <= 120 && !/[\r\n|]/.test(field))) throw Error('O campo deve ter até 120 caracteres, em uma linha e sem o caractere |.');
   return {weekId:weekStart(data.gameDate),gameDate:data.gameDate,...weekDeadline(data.gameDate),teams:ids,matchTimes:[...matchTimes],matchFields:matchFields.map(field => field.trim()),status:data.status,notes};

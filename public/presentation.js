@@ -20,6 +20,6 @@ export function setupPresentation() {
   const heading = document.querySelector('.bid-intro h1');
   heading.innerHTML = '<span>BID DA</span><em>RECREAÇÃO</em>';
   document.querySelector('.bid-intro .eyebrow').textContent = 'BOLETIM INFORMATIVO DIÁRIO';
-  document.querySelector('.bid-intro p').textContent = 'INSCRIÇÕES · VÍNCULOS · TRANSFERÊNCIAS';
+  document.querySelector('.bid-intro p').textContent = 'ORGANIZAÇÃO · PARTICIPAÇÃO · RECREAÇÃO';
   document.querySelector('.registry-seal')?.remove();
 }

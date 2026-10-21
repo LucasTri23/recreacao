@@ -65,7 +65,7 @@ test('programação guarda pares em ordem e rejeita confronto incompleto ou time
   const data = {gameDate:'2026-10-25',status:'open',teams:['VERDE','BRANCO','BLUES','COIOTES']};
   assert.deepEqual(gameWeekDetails(data,DEFAULT_TEAMS).teams,data.teams);
   for (const teams of [[],['VERDE'],['VERDE','BRANCO','AZUL']]) assert.throws(() => gameWeekDetails({...data,teams},DEFAULT_TEAMS),/dois times/);
-  assert.throws(() => gameWeekDetails({...data,teams:['VERDE','BRANCO','VERDE','AZUL']},DEFAULT_TEAMS),/mais de um confronto/);
+  assert.throws(() => gameWeekDetails({...data,teams:['VERDE','BRANCO','VERDE','AZUL']},DEFAULT_TEAMS),/mais de um jogo/);
   assert.throws(() => gameWeekDetails({...data,teams:['VERDE','']},DEFAULT_TEAMS),/times ativos/);
 });
 test('horário e campo pertencem a cada par, com validação e compatibilidade com dados antigos', () => {
@@ -76,7 +76,7 @@ test('horário e campo pertencem a cada par, com validação e compatibilidade c
   assert.deepEqual(gameWeekDetails({...data,matchTimes:['',''],matchFields:['','']},DEFAULT_TEAMS).matchFields,['','']);
   for (const time of ['24:00','12:60','9:00',123]) assert.throws(() => gameWeekDetails({...data,matchTimes:[time,'']},DEFAULT_TEAMS),/Horário inválido/);
   for (const field of ['a'.repeat(121),'Campo\nCentro','Campo|Centro',123]) assert.throws(() => gameWeekDetails({...data,matchFields:[field,'']},DEFAULT_TEAMS),/campo deve/);
-  assert.throws(() => gameWeekDetails({...data,matchTimes:['20:30']},DEFAULT_TEAMS),/cada confronto/);
+  assert.throws(() => gameWeekDetails({...data,matchTimes:['20:30']},DEFAULT_TEAMS),/cada jogo/);
 });
 test('TXT permite publicar pendências, enquanto identificação do problema é explícita', () => {
   const rows = compareGameList('Gabriel\nPedro\nInativo\nDesconhecido',players,'VERDE'), entries = gameListEntries(rows);

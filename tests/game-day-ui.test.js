@@ -1,4 +1,4 @@
-﻿import {test} from 'node:test';
+import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {parseHTML} from 'linkedom';
 import {setupGameDay} from '../public/game-day-ui.js';
@@ -103,7 +103,7 @@ test('edição carrega confirmados marcados, mantém seleção entre modos e pub
 });
 test('admin exclui último confronto já escalado e salva a semana sem jogos',async t => {
   const {document,button,storage} = setup(t,'admin',true);
-  button('Excluir confronto').onclick();
+  button('Excluir jogo').onclick();
   assert.equal(document.querySelectorAll('.game-match-editor fieldset').length,0);
   const form = document.querySelector('[data-page="gerenciar-rodada"] form');
   await form.onsubmit({preventDefault() {}});

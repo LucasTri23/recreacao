@@ -15,7 +15,7 @@ test('resumo considera apenas os times programados e envios da semana atual', ()
 });
 test('texto contém detalhes do confronto, versão publicada e avisos sem dados privados', () => {
   const text = fixtureText(week,0,squads,entries,id => id);
-  assert.match(text,/BRANCO × COIOTES/); assert.match(text,/25\/10\/2026/); assert.match(text,/20:30 \(Brasília\)/); assert.match(text,/Santa Cruz/);
+  assert.match(text,/BRANCO e COIOTES/); assert.match(text,/25\/10\/2026/); assert.match(text,/20:30 \(Brasília\)/); assert.match(text,/Santa Cruz/);
   assert.match(text,/1\. FELIPE\n2\. LUCAS ⚠ Jogador não pertence a este time/);
   assert.match(text,/COIOTES\n⏳ Aguardando escalação/); assert.match(text,/Chegar cedo/);
   assert.doesNotMatch(text,/DADO PRIVADO|ANTIGO|FORA|draftId/);

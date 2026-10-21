@@ -17,10 +17,10 @@ export function setupGameDay({element,getProfile,getUserId,getPlayers,getTeams,m
   const schedule = element('form',null,'game-panel'), scheduleTitle = element('h3','Programação da semana');
   const dateLabel = element('label','Data do jogo'), gameDate = element('input'); gameDate.type = 'date'; gameDate.required = true; dateLabel.append(gameDate);
   const teamChecks = element('div',null,'game-match-editor');
-  const addMatch = element('button','Deseja adicionar outro confronto?','row-action'); addMatch.type = 'button';
+  const addMatch = element('button','Deseja adicionar outro jogo?','row-action'); addMatch.type = 'button';
   const statusLabel = element('label','Envio de escalações'), status = element('select');
   for (const [value,label] of [['open','Aberto até o prazo'],['closed','Fechado para diretores']]) { const option = element('option',label); option.value = value; status.append(option); } statusLabel.append(status);
-  const noteLabel = element('label','Observações públicas da rodada'), notes = element('textarea'); notes.maxLength = 500; noteLabel.append(notes);
+  const noteLabel = element('label','Observações públicas da semana'), notes = element('textarea'); notes.maxLength = 500; noteLabel.append(notes);
   const deadlineHint = element('p'), scheduleError = element('p',null,'form-error'), saveWeek = element('button','Salvar programação','primary'); saveWeek.type = 'submit'; scheduleError.setAttribute('role','alert');
   schedule.append(scheduleTitle,dateLabel,teamChecks,addMatch,statusLabel,noteLabel,deadlineHint,scheduleError,saveWeek); adminPage.append(schedule);
   const launch = element('div',null,'game-panel'), ownFixture = element('p'), start = element('button','Montar minha escalação','primary'); start.type = 'button'; launch.append(ownFixture,start); page.append(launch);
@@ -29,7 +29,7 @@ export function setupGameDay({element,getProfile,getUserId,getPlayers,getTeams,m
   const modeLabel = element('label','Como montar a escalação?'), mode = element('select');
   for (const [value,text] of [['roster','Escolher jogadores da lista do time'],['txt','Colar uma lista TXT']]) { const option = element('option',text); option.value = value; mode.append(option); } modeLabel.append(mode);
   const rosterPicker = element('fieldset');
-  const searchLabel = element('label','Buscar jogador do elenco'), rosterSearch = element('input'); rosterSearch.type = 'search'; rosterSearch.placeholder = 'Nome ou congregação'; searchLabel.append(rosterSearch);
+  const searchLabel = element('label','Buscar jogador do time'), rosterSearch = element('input'); rosterSearch.type = 'search'; rosterSearch.placeholder = 'Nome ou congregação'; searchLabel.append(rosterSearch);
   const selectedCount = element('p',null,'game-selected-count'); selectedCount.setAttribute('role','status');
   const steps = element('ol',null,'game-steps'); for (const text of ['Escolher jogadores','Conferir pendências','Publicar']) steps.append(element('li',text));
   const reviewSummary = element('p',null,'notice'), finalPreview = element('div'), back = element('button','Voltar','row-action'), actionBar = element('div',null,'game-action-bar'); back.type = 'button';
@@ -55,7 +55,7 @@ export function setupGameDay({element,getProfile,getUserId,getPlayers,getTeams,m
     if (!sdk) { render(); return; }
     const version = generation, id = selectedWeek(); let loaded = 0, entryVersion = 0, entryStops = [], entriesLoaded = false;
     stops.push(() => { entryVersion++; entryStops.forEach(fn => fn()); });
-    const listen = (ref,callback) => { let first = true; stops.push(sdk.onSnapshot(ref,snap => { if (version !== generation) return; callback(snap); if (first) { loaded++; first = false; } ready = loaded === 2 && entriesLoaded; render(); },error => { if (version !== generation) return; ready = false; message.textContent = 'Não foi possível carregar a rodada: '+error.message; })); };
+    const listen = (ref,callback) => { let first = true; stops.push(sdk.onSnapshot(ref,snap => { if (version !== generation) return; callback(snap); if (first) { loaded++; first = false; } ready = loaded === 2 && entriesLoaded; render(); },error => { if (version !== generation) return; ready = false; message.textContent = 'Não foi possível carregar a programação: '+error.message; })); };
     listen(sdk.doc(db,'gameWeeks',id),s => { week = s.data() || null; });
     listen(sdk.query(sdk.collection(db,'gameSquads'),sdk.where('weekId','==',id)),s => {
       squads = s.docs.map(d => ({...d.data(),id:d.id})); entryVersion++; const current = entryVersion;
@@ -77,9 +77,9 @@ export function setupGameDay({element,getProfile,getUserId,getPlayers,getTeams,m
     teamChecks.replaceChildren();
     const used = new Set(matchDraft.flat().filter(Boolean));
     matchDraft.forEach((pair,index) => {
-      const card = element('fieldset',null,'game-match'); card.append(element('legend',`Confronto ${index+1}`));
+      const card = element('fieldset',null,'game-match'); card.append(element('legend',`Jogo ${index+1}`));
       pair.forEach((id,side) => {
-        const label = element('label',side ? 'Adversário' : 'Time'), select = element('select');
+        const label = element('label',side ? 'Outro time' : 'Time'), select = element('select');
         const empty = element('option','Selecione um time'); empty.value = ''; select.append(empty);
         for (const [key,team] of Object.entries(getTeams())) if ((team.status === 'active' && !used.has(key)) || key === id) {
           const option = element('option',`${team.badge} ${team.name}${team.status !== 'active' ? ' (indisponível)' : ''}`); option.value = key; select.append(option);
@@ -92,11 +92,11 @@ export function setupGameDay({element,getProfile,getUserId,getPlayers,getTeams,m
       const fieldLabel = element('label','Campo / local'), field = element('input'); field.type = 'text'; field.maxLength = 120; field.value = info.field; field.placeholder = 'Ex.: Campo Santa Cruz';
       field.oninput = () => { info.field = field.value; dirty = true; }; fieldLabel.append(field);
       card.append(timeLabel,fieldLabel,element('p','Horário e campo são opcionais. Se estiverem vazios, aparecerão como “a definir”.','game-match-hint'));
-      const remove = element('button','Excluir confronto','row-action'); remove.type = 'button';
-      remove.onclick = () => { matchDraft.splice(index,1); matchInfo.splice(index,1); dirty = true; renderMatches(); toast('Confronto retirado. Clique em Salvar programação para confirmar a exclusão, inclusive das escalações publicadas.'); };
+      const remove = element('button','Excluir jogo','row-action'); remove.type = 'button';
+      remove.onclick = () => { matchDraft.splice(index,1); matchInfo.splice(index,1); dirty = true; renderMatches(); toast('Jogo retirado. Clique em Salvar programação para confirmar a exclusão, inclusive das escalações publicadas.'); };
       card.append(remove); teamChecks.append(card);
     });
-    if (!matchDraft.length) teamChecks.append(element('p','Nenhum confronto. Salve para excluir os jogos da semana e retirar suas escalações da consulta pública.'));
+    if (!matchDraft.length) teamChecks.append(element('p','Nenhum jogo. Salve para excluir os jogos da semana e retirar suas escalações da consulta pública.'));
     const remaining = Object.entries(getTeams()).filter(([id,team]) => team.status === 'active' && !used.has(id)).length;
     addMatch.disabled = busy || matchDraft.some(pair => pair.some(id => !id)) || remaining < 2;
   }
@@ -157,7 +157,7 @@ export function setupGameDay({element,getProfile,getUserId,getPlayers,getTeams,m
   function validate() {
     let error = '';
     let warningCount = 0;
-    try { if (!ready) throw Error('Aguarde o carregamento da rodada.'); if (!canSubmitSquad(getProfile(),week,choose.value,getTeams())) throw Error('Envio indisponível para este time ou fora do prazo. Após quinta-feira, peça ao admin para corrigir.'); const selected = gameListEntries(rows); warningCount = selected.filter(entry => gameEntryIssue(getPlayers().find(p => p.id === entry.playerId),choose.value) !== 'ok').length; } catch(e) { error = e.message; }
+    try { if (!ready) throw Error('Aguarde o carregamento da semana.'); if (!canSubmitSquad(getProfile(),week,choose.value,getTeams())) throw Error('Envio indisponível para este time ou fora do prazo. Após quinta-feira, peça ao admin para corrigir.'); const selected = gameListEntries(rows); warningCount = selected.filter(entry => gameEntryIssue(getPlayers().find(p => p.id === entry.playerId),choose.value) !== 'ok').length; } catch(e) { error = e.message; }
     const permitted = ready && canSubmitSquad(getProfile(),week,choose.value,getTeams());
     publish.disabled = busy || !permitted || (step === 1 && mode.value === 'txt' ? !raw.value.trim() : !!error) || (step === 3 && !ack.checked);
     if (!busy) feedback.textContent = submitError || (step === 1 && permitted ? 'Selecione os jogadores ou cole a lista para conferir.' : error) || (warningCount ? `${warningCount} pendência(s). Você pode publicar; os avisos ficarão visíveis para todos.` : 'Nomes conferidos. Avance para publicar.');
@@ -255,7 +255,7 @@ export function setupGameDay({element,getProfile,getUserId,getPlayers,getTeams,m
     if (oldSelection && choose.value !== oldSelection) clearDraft();
     editor.hidden = !eligible || !opened;
     const ownIndex = week?.teams.indexOf(choose.value) ?? -1, opponent = ownIndex >= 0 ? week.teams[ownIndex % 2 ? ownIndex-1 : ownIndex+1] : '';
-    ownFixture.textContent = ownIndex >= 0 ? `${nameOf(choose.value)} × ${opponent ? nameOf(opponent) : 'adversário a definir'}` : '';
+    ownFixture.textContent = ownIndex >= 0 ? `${nameOf(choose.value)} e ${opponent ? nameOf(opponent) : 'outro time a definir'}` : '';
     start.textContent = opened ? 'Continuar minha escalação' : squads.some(s => s.teamId === choose.value) ? 'Editar minha escalação' : 'Montar minha escalação';
     start.disabled = busy || !ready || !canSubmitSquad(profile,week,choose.value,getTeams());
     renderRoster();
@@ -279,25 +279,25 @@ export function setupGameDay({element,getProfile,getUserId,getPlayers,getTeams,m
     if (ready && week && !week.teams.length) official.append(element('p','Nenhum jogo programado nesta semana.'));
     if (ready && week?.teams.length) {
       const summary = roundSummary(week,squads), panel = element('div',null,'game-round-summary');
-      panel.append(element('h4','Resumo da rodada'),element('p',`${summary.submitted.length} de ${week.teams.length} times enviaram · ${summary.pending.length} pendente(s)`));
+      panel.append(element('h4','Resumo da semana'),element('p',`${summary.submitted.length} de ${week.teams.length} times enviaram · ${summary.pending.length} pendente(s)`));
       for (const [label,ids] of [['✅ Enviaram',summary.submitted],['⏳ Ainda não enviaram',summary.pending]]) {
         panel.append(element('strong',label),element('p',ids.length ? ids.map(nameOf).join(' · ') : 'Nenhum time'));
       }
-      panel.append(element('p','Enviada indica que a escalação foi publicada. Confira os avisos de cadastro nos confrontos.')); official.append(panel);
+      panel.append(element('p','Enviada indica que a escalação foi publicada. Confira os avisos de cadastro nos jogos.')); official.append(panel);
     }
     let matchCard;
     if (ready) for (const [teamIndex,id] of (week?.teams || []).entries()) {
       if (teamIndex % 2 === 0) {
         const opponent = week.teams[teamIndex+1];
         matchCard = element('section',null,'game-fixture');
-        matchCard.append(element('h4',opponent ? `${nameOf(id)} × ${nameOf(opponent)}` : `${nameOf(id)} · escolha o adversário na programação`));
+        matchCard.append(element('h4',opponent ? `${nameOf(id)} e ${nameOf(opponent)}` : `${nameOf(id)} · escolha o outro time na programação`));
         const matchIndex = teamIndex/2;
         matchCard.append(element('p',`Horário: ${week.matchTimes?.[matchIndex] ? week.matchTimes[matchIndex]+' (Brasília)' : 'a definir'} · Campo: ${week.matchFields?.[matchIndex] || 'a definir'}`,'game-fixture-info'));
-        const share = element('div',null,'game-fixture-share'), copy = element('button','Copiar confronto para WhatsApp','row-action'), copyStatus = element('p'); copy.type = 'button'; copyStatus.setAttribute('role','status');
+        const share = element('div',null,'game-fixture-share'), copy = element('button','Copiar jogo para WhatsApp','row-action'), copyStatus = element('p'); copy.type = 'button'; copyStatus.setAttribute('role','status');
         const fallbackLabel = element('label','Copie este texto e cole no WhatsApp'), fallback = element('textarea'); fallback.readOnly = true; fallback.rows = 10; fallbackLabel.append(fallback); fallbackLabel.hidden = true;
         copy.onclick = async () => {
           const text = fixtureText(week,matchIndex,squads,entries,nameOf,issueOf);
-          try { await navigator.clipboard.writeText(text); copyStatus.textContent = 'Confronto copiado! Cole na conversa do WhatsApp.'; fallbackLabel.hidden = true; }
+          try { await navigator.clipboard.writeText(text); copyStatus.textContent = 'Jogo copiado! Cole na conversa do WhatsApp.'; fallbackLabel.hidden = true; }
           catch { fallback.value = text; fallbackLabel.hidden = false; fallback.focus(); fallback.select(); copyStatus.textContent = 'A cópia automática não está disponível. Selecione e copie o texto abaixo.'; }
         };
         share.append(copy,copyStatus,fallbackLabel); matchCard.append(share);

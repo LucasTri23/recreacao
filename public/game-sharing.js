@@ -10,7 +10,7 @@ export function roundSummary(week,squads) {
 export function fixtureText(week,index,squads,entries,nameOf,issueOf = entry => entry.issue || 'ok') {
   const ids = week.teams.slice(index*2,index*2+2);
   const date = week.gameDate.split('-').reverse().join('/');
-  const lines = [`⚽ ${ids.map(nameOf).join(' × ')}`,`Data: ${date}`,`Horário: ${week.matchTimes?.[index] ? week.matchTimes[index]+' (Brasília)' : 'a definir'}`,`Campo: ${week.matchFields?.[index] || 'a definir'}`];
+  const lines = [`⚽ ${ids.map(nameOf).join(' e ')}`,`Data: ${date}`,`Horário: ${week.matchTimes?.[index] ? week.matchTimes[index]+' (Brasília)' : 'a definir'}`,`Campo: ${week.matchFields?.[index] || 'a definir'}`];
   if (week.notes) lines.push(`Observações: ${week.notes}`);
   for (const id of ids) {
     lines.push('',nameOf(id));

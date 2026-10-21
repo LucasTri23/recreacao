@@ -31,7 +31,7 @@ export function setupPlayerManagement({element,isAdmin,getPlayers,mutate,toast,t
       form.oninput = suggest;
       form.append(suggestions);
     } else {
-      form.append(element('p',deleting ? 'O jogador sairá da relação principal. O histórico e os times ficam preservados, e você poderá restaurá-lo pelo filtro Excluídos.' : action === 'inactive' ? 'O jogador ficará fora das listas de participantes ativos e não poderá receber novas inscrições até ser reativado. Os times serão preservados.' : 'O jogador voltará à relação de participantes ativos, com os mesmos times e a classificação de goleiro ou jogador de linha preservada.'));
+      form.append(element('p',deleting ? 'O jogador sairá da relação principal. O histórico e os times ficam preservados, e você poderá restaurá-lo pelo filtro Excluídos.' : action === 'inactive' ? 'O jogador ficará fora das listas de participantes ativos e não poderá receber novas inscrições até ser reativado. Os times serão preservados.' : 'O jogador voltará à relação de participantes ativos, com os mesmos times e a identificação como goleiro ou jogador de linha preservada.'));
       const label = element('label',null,'duplicate-ack'), confirm = element('input'); confirm.type = 'checkbox'; confirm.required = true;
       label.append(confirm,element('span',`Confirmo a ação para ${playerName(player.name)}.`)); form.append(label);
     }
