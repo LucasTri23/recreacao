@@ -15,9 +15,16 @@ export function createGameApi(sdk,db,auth,now = Date.now) {
         if (profile?.role !== 'admin') throw Error('Apenas a administração pode programar a semana.');
         const teams = (await get(tx,teamsRef))?.items || DEFAULT_TEAMS;
         const week = gameWeekDetails(data,teams), ref = doc(db,'gameWeeks',week.weekId);
-        await tx.get(ref);
+        const previous = (await tx.get(ref)).data();
+        const removed = (previous?.teams || []).filter(id => !week.teams.includes(id));
+        const removedSquads = [];
+        for (const teamId of removed) {
+          const squad = doc(db,'gameSquads',`${week.weekId}_${teamId}`);
+          if ((await tx.get(squad)).data()) removedSquads.push(squad);
+        }
+        for (const squad of removedSquads) tx.delete(squad);
         tx.set(ref,{...week,teamNames:Object.fromEntries(week.teams.map(id => [id,teams[id].name])),updatedAt:serverTimestamp(),lastEvent:eventRef.id});
-        tx.set(eventRef,{...actor(profile),kind:'gameWeek',weekId:week.weekId,teams:week.teams,name:'Dia de jogo',detail:`Programação do jogo de ${week.gameDate}. Envio até quinta-feira ${week.cutoff}. Semana ${week.status === 'open' ? 'aberta' : 'fechada'}.`});
+        tx.set(eventRef,{...actor(profile),kind:'gameWeek',weekId:week.weekId,teams:week.teams,name:'Dia de jogo',detail:`Programação do jogo de ${week.gameDate}. Envio até quinta-feira ${week.cutoff}. Semana ${week.status === 'open' ? 'aberta' : 'fechada'}.${removed.length ? ' Confrontos excluídos dos times: '+removed.map(id => previous.teamNames?.[id] || teams[id]?.name || id).join(', ')+'.' : ''}`});
       });
       if (action !== 'submitGameSquad') throw Error('Operação inválida.');
       if (weekStart(data.weekId) !== data.weekId || typeof data.teamId !== 'string' || !data.teamId || data.teamId.includes('/')) throw Error('Semana ou time inválido.');

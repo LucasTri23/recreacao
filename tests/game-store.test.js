@@ -9,7 +9,7 @@ async function fixture() {
     collection:(_,path) => ({path}),
     doc:(...args) => args.length === 1 ? {path:`events/e${++sequence}`,id:`e${sequence}`} : {path:args.slice(1).join('/')},
     serverTimestamp:() => 1000,
-    runTransaction:async (_,callback) => { const writes = []; const result = await callback({get:async ref => ({data:() => records.get(ref.path)}),set:(ref,data) => writes.push([ref.path,data])}); writes.forEach(([key,data]) => records.set(key,data)); return result; }
+    runTransaction:async (_,callback) => { const writes = [], deletes = []; const result = await callback({get:async ref => ({data:() => records.get(ref.path)}),set:(ref,data) => writes.push([ref.path,data]),delete:ref => deletes.push(ref.path)}); writes.forEach(([key,data]) => records.set(key,data)); deletes.forEach(key => records.delete(key)); return result; }
   };
   const api = createGameApi(sdk,{}, {currentUser:{uid:'u'}},() => clock);
   const ids = [];
@@ -25,6 +25,27 @@ test('admin programa a semana e diretor publica somente jogadores do próprio ti
   assert.equal([...records.values()].filter(v => v.draftId === squad.draftId && v.playerId).length,12);
   await assert.rejects(api('submitGameSquad',{weekId:'2026-10-19',teamId:'BRANCO',playerIds:[ids[0]]}),/bloqueado/);
   await assert.rejects(api('saveGameWeek',{gameDate:'2026-10-25',teams:['VERDE'],status:'open'}),/administração/);
+});
+test('admin exclui último confronto com escalação, preserva jogadores e não ressuscita a lista ao recriar',async () => {
+  const {api,records,ids} = await fixture();
+  await api('submitGameSquad',{weekId:'2026-10-19',teamId:'VERDE',playerIds:[ids[0]]});
+  const before = records.get('players/'+ids[0]);
+  await api('saveGameWeek',{gameDate:'2026-10-25',teams:[],status:'closed'});
+  assert.deepEqual(records.get('gameWeeks/2026-10-19').teams,[]);
+  assert.equal(records.has('gameSquads/2026-10-19_VERDE'),false);
+  assert.deepEqual(records.get('players/'+ids[0]),before);
+  await assert.rejects(api('submitGameSquad',{weekId:'2026-10-19',teamId:'VERDE',playerIds:[ids[0]]}),/bloqueado/);
+  await api('saveGameWeek',{gameDate:'2026-10-25',teams:['VERDE','BRANCO'],status:'open'});
+  assert.equal(records.has('gameSquads/2026-10-19_VERDE'),false);
+});
+test('excluir um confronto mantém as escalações dos demais jogos',async () => {
+  const {api,records,ids} = await fixture();
+  await api('saveGameWeek',{gameDate:'2026-10-25',teams:['VERDE','BRANCO','BLUES','COIOTES'],status:'open'});
+  for (const teamId of ['VERDE','BLUES']) await api('submitGameSquad',{weekId:'2026-10-19',teamId,playerIds:[ids[0]]});
+  const remaining = records.get('gameSquads/2026-10-19_BLUES');
+  await api('saveGameWeek',{gameDate:'2026-10-25',teams:['BLUES','COIOTES'],status:'open'});
+  assert.equal(records.has('gameSquads/2026-10-19_VERDE'),false);
+  assert.deepEqual(records.get('gameSquads/2026-10-19_BLUES'),remaining);
 });
 test('admin salva e recupera horário e campo de cada confronto',async () => {
   const {api,records} = await fixture();

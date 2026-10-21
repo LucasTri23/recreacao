@@ -101,4 +101,15 @@ test('edição carrega confirmados marcados, mantém seleção entre modos e pub
   const saved = JSON.parse(storage.get('recreacao-games-demo')), squad = Object.values(saved.squads).find(s => s.teamId === 'VERDE');
   assert.deepEqual(Object.values(saved.entries).filter(e => e.draftId === squad.draftId).map(e => e.playerId),['c']);
 });
+test('admin exclui último confronto já escalado e salva a semana sem jogos',async t => {
+  const {document,button,storage} = setup(t,'admin',true);
+  button('Excluir confronto').onclick();
+  assert.equal(document.querySelectorAll('.game-match-editor fieldset').length,0);
+  const form = document.querySelector('[data-page="gerenciar-rodada"] form');
+  await form.onsubmit({preventDefault() {}});
+  const saved = JSON.parse(storage.get('recreacao-games-demo'));
+  assert.equal(Object.values(saved.weeks)[0].teams.length,0);
+  assert.equal(Object.values(saved.squads).length,0);
+  assert.match(document.querySelector('[data-page="dia-de-jogo"]').textContent,/Nenhum jogo programado/);
+});
 

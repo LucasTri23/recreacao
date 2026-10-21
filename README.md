@@ -112,6 +112,8 @@ O cadastro oferece o botão “🧤 Ele é GOLEIRO?”. Goleiros podem ter inscr
 
 ## Dia de jogo
 
+O admin pode excluir qualquer confronto em Jogos da semana, mesmo com escalações enviadas: clicar em Excluir confronto e depois Salvar programação. Excluir todos fecha a rodada sem jogos. As escalações desses times saem da consulta pública e não reaparecem automaticamente se o confronto for recriado. Cadastros de jogadores e registros do histórico são preservados.
+
 Ao editar uma escalação publicada, o elenco já abre com os jogadores da última versão marcados. É possível desmarcar ou remover e depois publicar a atualização. Alternar entre elenco e TXT preserva os jogadores escolhidos; a escalação publicada permanece igual até confirmar a nova publicação.
 
 A consulta pública fica em `#/dia-de-jogo`. A programação fica somente em `#/gerenciar-rodada`, com formulário visível apenas para admins. O diretor já vê seu próprio confronto e entra por “Montar minha escalação”; se já publicou, “Editar minha escalação” carrega a versão atual. O envio tem três etapas: escolher, conferir e publicar. O elenco possui busca sem acentos, contador e selecionados primeiro; o TXT exibe resumo e mantém as correspondências confirmadas recolhidas, com as pendências abertas. Na etapa final todos os nomes e avisos são apresentados antes da confirmação. No celular o botão principal fica fixo no rodapé, mudando conforme a etapa. O prazo e as permissões continuam sendo verificados pelo banco.

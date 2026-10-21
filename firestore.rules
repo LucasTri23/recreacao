@@ -194,11 +194,11 @@ service cloud.firestore {
         && start.dayOfWeek() == 1 && day >= start && day < start + duration.value(7,'d')
         && cutoff.dayOfWeek() == 4 && cutoff <= day && cutoff > day - duration.value(7,'d')
         && p.deadline is int && p.deadline == cutoff.toMillis() + 97200000
-        && p.teams is list && p.teams.size() >= 2 && p.teams.size() <= 100 && p.teams.size() % 2 == 0 && p.teams.toSet().size() == p.teams.size()
+        && p.teams is list && (p.teams.size() >= 2 || p.status == 'closed') && p.teams.size() <= 100 && p.teams.size() % 2 == 0 && p.teams.toSet().size() == p.teams.size()
         && p.matchTimes is list && p.matchTimes.size() * 2 == p.teams.size()
         && p.matchFields is list && p.matchFields.size() == p.matchTimes.size()
-        && ('#'+p.matchTimes.join('|')+'#').split('\\|').size() == p.matchTimes.size()
-        && ('#'+p.matchFields.join('|')+'#').split('\\|').size() == p.matchFields.size()
+        && (p.matchTimes.size() == 0 || ('#'+p.matchTimes.join('|')+'#').split('\\|').size() == p.matchTimes.size())
+        && (p.matchFields.size() == 0 || ('#'+p.matchFields.join('|')+'#').split('\\|').size() == p.matchFields.size())
         && p.matchTimes.join('|').matches('(([01][0-9]|2[0-3]):[0-5][0-9])?(\\|(([01][0-9]|2[0-3]):[0-5][0-9])?)*')
         && p.matchFields.join('|').matches('[^|\\r\\n]{0,120}(\\|[^|\\r\\n]{0,120})*')
         && teamCatalog().keys().hasAll(p.teams)
@@ -256,7 +256,7 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/gameDrafts/$(request.resource.data.draftId)).data.baseDraft == '';
       allow update: if validGameSquad(id,request.resource.data)
         && get(/databases/$(database)/documents/gameDrafts/$(request.resource.data.draftId)).data.baseDraft == resource.data.draftId;
-      allow delete: if false;
+      allow delete: if admin() && !(resource.data.teamId in getAfter(/databases/$(database)/documents/gameWeeks/$(resource.data.weekId)).data.teams);
     }
     match /users/{uid} {
       allow get: if request.auth != null && (request.auth.uid == uid || admin());

@@ -21,6 +21,11 @@ function add(label,suffix,method,data,expectation,change = () => {},resource) {
 }
 const set = (test,fn,suffix,data) => { test.functionMocks.find(m => m.function === fn && m.args[0].exactValue === path(suffix)).result.value = data; };
 const admin = test => set(test,'get','users/u',{data:{role:'admin'}});
+const emptyWeek = {...week,teams:[],teamNames:{},matchTimes:[],matchFields:[],status:'closed'};
+add('admin exclui último jogo da semana',`gameWeeks/${weekId}`,'update',emptyWeek,'ALLOW',test => { admin(test); set(test,'getAfter',`events/${draftId}`,{data:{...scheduleEvent,teams:[]}}); },week);
+add('admin retira escalação de confronto excluído',`gameSquads/${squadId}`,'delete',{},'ALLOW',test => { admin(test); set(test,'getAfter',`gameWeeks/${weekId}`,{data:emptyWeek}); },squad);
+add('diretor não exclui escalação',`gameSquads/${squadId}`,'delete',{},'DENY',test => set(test,'getAfter',`gameWeeks/${weekId}`,{data:emptyWeek}),squad);
+add('escalação de time ainda programado não pode ser apagada',`gameSquads/${squadId}`,'delete',{},'DENY',admin,squad);
 add('admin programa semana',`gameWeeks/${weekId}`,'create',week,'ALLOW',test => { admin(test); set(test,'getAfter',`events/${draftId}`,{data:scheduleEvent}); });
 add('diretor não programa semana',`gameWeeks/${weekId}`,'create',week,'DENY',test => set(test,'getAfter',`events/${draftId}`,{data:scheduleEvent}));
 for (const [label,changes,expectation] of [

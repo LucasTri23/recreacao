@@ -18,7 +18,7 @@ export function gameWeekDetails(data,teams) {
   dateValue(data.gameDate);
   if (!Array.isArray(data.teams)) throw Error('Escolha os times da semana.');
   const ids = [...data.teams];
-  if (ids.length < 2 || ids.length > 100 || ids.length % 2) throw Error('Cada confronto precisa de dois times. Complete ou remova o confronto incompleto.');
+  if ((ids.length === 0 && data.status !== 'closed') || ids.length > 100 || ids.length % 2) throw Error('Cada confronto precisa de dois times. Complete ou remova o confronto incompleto.');
   if (new Set(ids).size !== ids.length) throw Error('Um time não pode participar de mais de um confronto na mesma rodada.');
   if (!ids.every(id => Object.hasOwn(teams,id) && teams[id].status === 'active')) throw Error('Escolha apenas times ativos para os confrontos.');
   if (!['open','closed'].includes(data.status)) throw Error('Situação da semana inválida.');

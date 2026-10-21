@@ -92,10 +92,11 @@ export function setupGameDay({element,getProfile,getUserId,getPlayers,getTeams,m
       const fieldLabel = element('label','Campo / local'), field = element('input'); field.type = 'text'; field.maxLength = 120; field.value = info.field; field.placeholder = 'Ex.: Campo Santa Cruz';
       field.oninput = () => { info.field = field.value; dirty = true; }; fieldLabel.append(field);
       card.append(timeLabel,fieldLabel,element('p','Horário e campo são opcionais. Se estiverem vazios, aparecerão como “a definir”.','game-match-hint'));
-      const remove = element('button','Remover confronto','row-action'); remove.type = 'button';
-      remove.onclick = () => { matchDraft.splice(index,1); matchInfo.splice(index,1); if (!matchDraft.length) { matchDraft.push(['','']); matchInfo.push({time:'',field:''}); } dirty = true; renderMatches(); };
+      const remove = element('button','Excluir confronto','row-action'); remove.type = 'button';
+      remove.onclick = () => { matchDraft.splice(index,1); matchInfo.splice(index,1); dirty = true; renderMatches(); toast('Confronto retirado. Clique em Salvar programação para confirmar a exclusão, inclusive das escalações publicadas.'); };
       card.append(remove); teamChecks.append(card);
     });
+    if (!matchDraft.length) teamChecks.append(element('p','Nenhum confronto. Salve para excluir os jogos da semana e retirar suas escalações da consulta pública.'));
     const remaining = Object.entries(getTeams()).filter(([id,team]) => team.status === 'active' && !used.has(id)).length;
     addMatch.disabled = busy || matchDraft.some(pair => pair.some(id => !id)) || remaining < 2;
   }
@@ -105,8 +106,13 @@ export function setupGameDay({element,getProfile,getUserId,getPlayers,getTeams,m
     event.preventDefault(); saveWeek.disabled = true; scheduleError.textContent = '';
     try {
       const data = {gameDate:gameDate.value,status:status.value,notes:notes.value,teams:matchDraft.flat(),matchTimes:matchInfo.map(info => info.time),matchFields:matchInfo.map(info => info.field)};
+      if (!data.teams.length) data.status = 'closed';
       if (weekStart(data.gameDate) !== selectedWeek()) throw Error('A data do jogo precisa pertencer à semana selecionada.');
-      if (demo) { const details = gameWeekDetails(data,getTeams()); details.teamNames = Object.fromEntries(details.teams.map(id => [id,nameOf(id)])); demoWeeks[details.weekId] = details; week = details; persist(); }
+      if (demo) {
+        const details = gameWeekDetails(data,getTeams()); details.teamNames = Object.fromEntries(details.teams.map(id => [id,nameOf(id)]));
+        for (const teamId of week?.teams || []) if (!details.teams.includes(teamId)) delete demoSquads[`${details.weekId}_${teamId}`];
+        demoWeeks[details.weekId] = details; week = details; squads = Object.values(demoSquads).filter(s => s.weekId === details.weekId); persist();
+      }
       else await mutate('saveGameWeek',data);
       dirty = false; toast('Programação da semana salva.'); render();
     } catch(error) { scheduleError.textContent = error.message; }
@@ -257,7 +263,7 @@ export function setupGameDay({element,getProfile,getUserId,getPlayers,getTeams,m
       if (!dirty && programSource !== week) {
         const ids = week?.teams || []; matchDraft = [];
         for (let i=0;i<ids.length;i+=2) matchDraft.push([ids[i],ids[i+1] || '']);
-        if (!matchDraft.length) matchDraft.push(['','']);
+        if (!matchDraft.length && !week) matchDraft.push(['','']);
         matchInfo = matchDraft.map((_,index) => ({time:week?.matchTimes?.[index] || '',field:week?.matchFields?.[index] || ''}));
         const saturday = dateValue(selectedWeek()); saturday.setUTCDate(saturday.getUTCDate()+5);
         gameDate.value = week?.gameDate || saturday.toISOString().slice(0,10); status.value = week?.status || 'open'; notes.value = week?.notes || ''; programSource = week;
@@ -270,7 +276,8 @@ export function setupGameDay({element,getProfile,getUserId,getPlayers,getTeams,m
     loadCurrent.disabled = busy || !ready || !squads.some(s => s.teamId === choose.value);
     results.inert = busy; schedule.inert = busy;
     official.replaceChildren(element('h3','Escalações da semana'));
-    if (ready && week) {
+    if (ready && week && !week.teams.length) official.append(element('p','Nenhum jogo programado nesta semana.'));
+    if (ready && week?.teams.length) {
       const summary = roundSummary(week,squads), panel = element('div',null,'game-round-summary');
       panel.append(element('h4','Resumo da rodada'),element('p',`${summary.submitted.length} de ${week.teams.length} times enviaram · ${summary.pending.length} pendente(s)`));
       for (const [label,ids] of [['✅ Enviaram',summary.submitted],['⏳ Ainda não enviaram',summary.pending]]) {
