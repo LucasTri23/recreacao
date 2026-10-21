@@ -115,13 +115,20 @@ export function setupGameDay({element,getProfile,getUserId,getPlayers,getTeams,m
   choose.onchange = () => { clearDraft(); opened = true; render(); };
   mode.onchange = () => { clearDraft(); opened = true; render(); };
   raw.oninput = () => { rows = []; submitError = ''; results.replaceChildren(); ack.checked = false; validate(); };
+  function removalButton(row) {
+    const button = element('button',row.ignored ? 'Restaurar na escalação' : 'Remover da escalação','row-action game-remove-player'); button.type = 'button'; button.disabled = busy;
+    button.setAttribute('aria-label',`${row.ignored ? 'Restaurar' : 'Remover'} ${row.name} ${row.ignored ? 'na' : 'da'} escalação`);
+    button.onclick = () => { row.ignored = !row.ignored; ack.checked = false; submitError = ''; renderRoster(); renderRows(); };
+    return button;
+  }
   function renderRows() {
     results.replaceChildren(); ack.checked = false; submitError = '';
     const roster = getPlayers().filter(p => isActivePlayer(p) && p.teams.includes(choose.value));
     rows.forEach((row,index) => {
       const issue = gameEntryIssue(getPlayers().find(p => p.id === row.selectedId),choose.value);
       const confirmed = !row.ignored && issue === 'ok';
-      const card = element(confirmed ? 'details' : 'div',null,'duplicate-card'); card.append(element(confirmed ? 'summary' : 'strong',`${confirmed ? '✅ ' : ''}${index+1}. ${row.raw}${confirmed ? ' · confirmado (clique para alterar)' : ''}`));
+      const wrapper = element('div',null,'duplicate-card'), card = element(confirmed ? 'details' : 'div');
+      card.append(element(confirmed ? 'summary' : 'strong',`${row.ignored ? 'Retirado · ' : confirmed ? '✅ ' : ''}${index+1}. ${row.raw}${confirmed ? ' · confirmado (clique para alterar)' : ''}`));
       const question = element('label',`“${row.name}” na lista corresponde a qual jogador cadastrado no time?`), select = element('select');
       const empty = element('option','Publicar este nome com aviso de vínculo não confirmado'); empty.value = ''; select.append(empty);
       const candidates = [...row.candidates,...roster.filter(p => !row.candidates.some(c => c.id === p.id))];
@@ -133,7 +140,8 @@ export function setupGameDay({element,getProfile,getUserId,getPlayers,getTeams,m
       if (row.outside.length) card.append(element('p',`Também encontrado fora da relação ativa deste time: ${row.outside.map(p => `${playerName(p.name)} (${p.congregation} · ${p.teams.map(nameOf).join(', ')})`).join('; ')}.`));
       const ignoreLabel = element('label',null,'duplicate-ack'), ignore = element('input'); ignore.type = 'checkbox'; ignore.checked = row.ignored;
       select.disabled = row.ignored;
-      ignore.onchange = () => { row.ignored = ignore.checked; renderRows(); }; ignoreLabel.append(ignore,element('span','Ignorar esta linha (cabeçalho ou pessoa que não vai jogar).')); card.append(ignoreLabel); results.append(card);
+      ignore.onchange = () => { row.ignored = ignore.checked; renderRoster(); renderRows(); }; ignoreLabel.append(ignore,element('span','Ignorar esta linha (cabeçalho ou pessoa que não vai jogar).')); card.append(ignoreLabel);
+      wrapper.append(card,removalButton(row)); results.append(wrapper);
     }); validate();
   }
   function validate() {
@@ -155,7 +163,10 @@ export function setupGameDay({element,getProfile,getUserId,getPlayers,getTeams,m
         if (check.checked) rows.push({raw:player.name,name:player.name,selectedId:player.id,candidates:[player],outside:[],ignored:false});
         ack.checked = false; submitError = ''; renderRoster(); validate();
       };
-      label.append(check,element('span',`${playerName(player.name)} · ${player.congregation}`)); rosterPicker.append(label);
+      label.append(check,element('span',`${playerName(player.name)} · ${player.congregation}`));
+      const choice = element('div',null,'game-roster-choice'); choice.append(label);
+      if (check.checked) choice.append(removalButton(rows.find(row => row.selectedId === player.id && !row.ignored)));
+      rosterPicker.append(choice);
     }
     if (!choices.length) rosterPicker.append(element('p','Nenhum jogador encontrado. Ajuste a busca ou use a opção TXT.'));
   }
@@ -177,6 +188,7 @@ export function setupGameDay({element,getProfile,getUserId,getPlayers,getTeams,m
         const player = getPlayers().find(p => p.id === row.selectedId), issue = gameEntryIssue(player,choose.value);
         const item = element('li',playerName(player?.name || row.name));
         if (issue !== 'ok') { item.className = 'game-warning'; item.append(element('strong',`⚠ ${GAME_ISSUES[issue]}`)); }
+        item.append(removalButton(row));
         list.append(item);
       }
       finalPreview.append(list);

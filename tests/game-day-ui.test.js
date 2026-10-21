@@ -38,7 +38,7 @@ test('diretor entra no próprio confronto e publica pela seleção em três pass
   assert.match(document.querySelector('.game-selected-count').textContent,/1 jogador selecionado/);
   await button('Conferir lista').onclick();
   assert.equal(document.querySelector('.game-steps [aria-current="step"]').textContent,'Conferir pendências');
-  assert.equal(document.querySelector('details.duplicate-card').hasAttribute('open'),false);
+  assert.equal(document.querySelector('.duplicate-card details').hasAttribute('open'),false);
   await button('Revisar publicação').onclick();
   const publish = button('Publicar 1 jogador'); assert.equal(publish.disabled,true);
   const ack = document.querySelector('.game-panel>.duplicate-ack input'); ack.checked = true; ack.onchange();
@@ -67,4 +67,18 @@ test('visitante não vê o editor nem os controles de configuração',t => {
   assert.equal(document.querySelector('[data-page="gerenciar-rodada"] form').hidden,true);
   assert.equal(button('Montar minha escalação').parentElement.hidden,true);
   assert.equal(document.querySelector('.game-steps').parentElement.hidden,true);
+});
+test('jogador pode ser removido na conferência, restaurado e retirado antes de publicar',async t => {
+  const {document,button} = setup(t); button('Montar minha escalação').onclick();
+  const check = document.querySelector('fieldset input[value="a"]'); check.checked = true; check.onchange();
+  assert.ok(button('Remover da escalação'));
+  await button('Conferir lista').onclick();
+  button('Remover da escalação').onclick();
+  assert.match(document.querySelector('.game-selected-count').textContent,/0 jogadores/);
+  assert.equal(button('Revisar publicação').disabled,true);
+  button('Restaurar na escalação').onclick(); await button('Revisar publicação').onclick();
+  const ack = document.querySelector('.game-panel>.duplicate-ack input'); ack.checked = true; ack.onchange();
+  const preview = [...document.querySelectorAll('h4')].find(node => node.textContent === 'Confira a escalação que ficará pública').parentElement;
+  preview.querySelector('button').onclick();
+  assert.equal(ack.checked,false); assert.equal(button('Publicar 0 jogadores').disabled,true);
 });
