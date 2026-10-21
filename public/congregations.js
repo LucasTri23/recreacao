@@ -1,17 +1,17 @@
 import {identity,similarity,playerName} from './domain.js';
-import {splitCongregation} from './cities.js';
+import {splitCongregation,normalizeRepeatedCity} from './cities.js';
 const key = value => identity(String(value || ''),'').slice(0,-1).replace(/[^a-z0-9]+/g,' ').trim();
 const expanded = value => key(value).replace(/\bbh\b/g,'belo horizonte');
 export function congregationOptions(players) {
   const unique = new Map();
   for (const p of players) {
-    const name = playerName(p.congregation).replace(/\bBH\s*$/i,'BELO HORIZONTE').trim().replace(/\s+/g,' ');
+    const name = playerName(normalizeRepeatedCity(p.congregation)).replace(/\bBH\s*$/i,'BELO HORIZONTE').trim().replace(/\s+/g,' ');
     if (name && !unique.has(key(name))) unique.set(key(name),name);
   }
   return [...unique.values()].sort((a,b) => a.localeCompare(b,'pt-BR'));
 }
 export function standardCongregation(value,known) {
-  return playerName(known.find(name => expanded(name) === expanded(value)) || value).replace(/\bBH\s*$/i,'BELO HORIZONTE').trim().replace(/\s+/g,' ');
+  return playerName(normalizeRepeatedCity(known.find(name => expanded(name) === expanded(value)) || value)).replace(/\bBH\s*$/i,'BELO HORIZONTE').trim().replace(/\s+/g,' ');
 }
 export function congregationSuggestions(value,known) {
   const query = expanded(value);

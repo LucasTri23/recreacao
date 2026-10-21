@@ -1,6 +1,7 @@
 import {createRequire} from 'node:module';
 import {randomUUID} from 'node:crypto';
 import {planBh} from './bh-plan.mjs';
+import {planRepeatedCities} from './repeated-city-plan.mjs';
 const require = createRequire(import.meta.url), auth = require('firebase-tools/lib/auth');
 const account = auth.getGlobalDefaultAccount();
 if (!account) throw Error('Autentique no Firebase CLI.');
@@ -18,7 +19,8 @@ async function list(collection) {
   return all;
 }
 const documents = await list('players');
-const {plans,conflicts} = await planBh(documents);
+const repeatedCities = process.argv.includes('--repeated-city');
+const {plans,conflicts} = await (repeatedCities ? planRepeatedCities : planBh)(documents);
 console.log(JSON.stringify({cadastrosParaPadronizar:plans.length,conflitosPreservados:conflicts.length,modo:process.argv.includes('--apply') ? 'aplicar' : 'simulação'}));
 if (process.argv.includes('--apply')) {
 const entries = await list('gameEntries');
@@ -29,13 +31,13 @@ function update(name,fields,condition,stamp = true) {
 let changed = 0, skipped = 0, linkedEntries = 0;
 for (const plan of plans) {
   const {source,target,sourceId,targetId,congregation} = plan;
-  const original = source.fields, eventId = 'bh-normalization-'+randomUUID();
+  const original = source.fields, eventId = 'city-normalization-'+randomUUID();
   const linked = entries.filter(doc => doc.fields.playerId?.stringValue === sourceId);
   if (linked.length > 490) { skipped++; continue; }
   const writes = [
-    update(`${root}/players/${targetId}`,{...original,congregation:text(congregation),city:text('Belo Horizonte'),lastEvent:text(eventId)},target ? {updateTime:target.updateTime} : {exists:false}),
+    update(`${root}/players/${targetId}`,{...original,congregation:text(congregation),city:text(plan.city || 'Belo Horizonte'),lastEvent:text(eventId)},target ? {updateTime:target.updateTime} : {exists:false}),
     update(source.name,{...original,teams:{arrayValue:{values:[]}},mergedInto:text(targetId),lastEvent:text(eventId)},{updateTime:source.updateTime}),
-    {update:{name:`${root}/events/${eventId}`,fields:{kind:text('edit'),actor:text('maintenance:bh-normalization'),actorName:text(`Administração (${account.user.email})`),sourceId:text(sourceId),playerId:text(targetId),name:original.name,previousName:original.name,previousCongregation:original.congregation,congregation:text(congregation),teams:original.teams,detail:text('Padronização da cidade: BH → BELO HORIZONTE. Vínculos e situação preservados.')}},currentDocument:{exists:false},updateTransforms:[{fieldPath:'at',setToServerValue:'REQUEST_TIME'}]},
+    {update:{name:`${root}/events/${eventId}`,fields:{kind:text('edit'),actor:text('maintenance:bh-normalization'),actorName:text(`Administração (${account.user.email})`),sourceId:text(sourceId),playerId:text(targetId),name:original.name,previousName:original.name,previousCongregation:original.congregation,congregation:text(congregation),teams:original.teams,detail:text(repeatedCities ? 'Remoção da cidade repetida na congregação. Vínculos e situação preservados.' : 'Padronização da cidade: BH → BELO HORIZONTE. Vínculos e situação preservados.')}},currentDocument:{exists:false},updateTransforms:[{fieldPath:'at',setToServerValue:'REQUEST_TIME'}]},
     ...linked.map(doc => update(doc.name,{...doc.fields,playerId:text(targetId)},{updateTime:doc.updateTime},false))
   ];
   const response = await fetch(base+':commit',{method:'POST',headers,body:JSON.stringify({writes})});
