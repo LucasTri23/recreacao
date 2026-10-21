@@ -10,8 +10,10 @@ import { setupHistory } from './history.js';
 import {setupCongregations,congregationOptions,standardCongregation} from './congregations.js';
 import {goalkeeperToggle} from './goalkeeper-toggle.js';
 import {citySelect,splitCongregation,cityCongregation} from './cities.js';
+import {setupNotifications} from './notifications.js';
 import {setupGameDay} from './game-day-ui.js';
 const $ = s => document.querySelector(s);
+const toast = setupNotifications(document);
 const mobileActions = window.matchMedia('(max-width:700px)');
 mobileActions.addEventListener('change',() => renderPlayers());
 let teamCatalog = structuredClone(DEFAULT_TEAMS);
@@ -33,16 +35,13 @@ setupCongregations({element,getPlayers:() => [...players,...archivedPlayers]});
 const statusFilter = element('select'); statusFilter.id = 'status-filter'; statusFilter.setAttribute('aria-label','Filtrar situação do jogador');
 for (const [value,label] of [['active','Ativos'],['inactive','Inativos'],['deleted','Excluídos'],['all','Todas as situações']]) { const option = element('option',label); option.value = value; statusFilter.append(option); }
 $('#team-filter').after(statusFilter); statusFilter.onchange = renderPlayers;
-const accessButton = element('button', '⚙ Gerenciar acessos');
+const accessButton = element('a', '⚙ Gerenciar acessos'); accessButton.href = '#/gerenciar-acessos'; accessButton.dataset.nav = 'gerenciar-acessos';
 accessButton.hidden = true;
 document.querySelector('nav').append(accessButton);
-const accessDialog = element('dialog');
-accessDialog.id = 'access-dialog';
+const accessDialog = element('section',null,'page-section');
+accessDialog.id = 'access-page'; accessDialog.dataset.page = 'gerenciar-acessos'; accessDialog.hidden = true;
 const accessTitle = element('div', null, 'dialog-title');
-const accessClose = element('button', '×', 'close');
-accessClose.setAttribute('aria-label','Fechar');
-accessClose.onclick = () => accessDialog.close();
-accessTitle.append(element('h2','Diretores e acessos'),accessClose);
+accessTitle.append(element('h2','Diretores e acessos'));
 const accessList = element('div');
 const accessSearch = element('input');
 accessSearch.type = 'search';
@@ -50,10 +49,13 @@ accessSearch.placeholder = 'Buscar diretor por nome, e-mail ou time';
 accessSearch.setAttribute('aria-label',accessSearch.placeholder);
 accessSearch.oninput = renderAccess;
 accessDialog.append(accessTitle,element('p','Escolha o time de cada diretor pelo e-mail da conta Google. Quem ainda não apareceu precisa entrar no site com Google uma vez.'),accessSearch,accessList);
-document.body.append(accessDialog);
-accessButton.onclick = () => { renderAccess(); accessDialog.showModal(); };
+document.querySelector('footer').before(accessDialog);
+accessButton.onclick = () => renderAccess();
 function renderAccess() {
   accessList.replaceChildren();
+  const authorized = profile?.role === 'admin';
+  accessSearch.hidden = !authorized;
+  if (!authorized) { accessList.append(element('p','Esta página é exclusiva da administração.')); return; }
   const query = identity(accessSearch.value, '').slice(0,-1);
   const sorted = accessUsers.filter(a => identity(`${a.displayName || ''} ${a.email || ''} ${teamName(a.team) || ''}`, '').includes(query)).sort((a,b) => (a.role === 'pending' ? 0 : 1) - (b.role === 'pending' ? 0 : 1) || (a.email || a.displayName || '').localeCompare(b.email || b.displayName || '','pt-BR'));
   if (!sorted.length) accessList.append(element('p','Nenhuma conta encontrada.'));
@@ -84,7 +86,6 @@ function renderAccess() {
 }
 const style = team => { const c = TEAM_COLORS[teamCatalog[team]?.color] || TEAM_COLORS.green; return `--team:${c.color};--soft:${c.soft};--ink:${c.ink}`; };
 function element(tag, text, className) { const e = document.createElement(tag); if (text != null) e.textContent = text; if (className) e.className = className; return e; }
-function toast(message) { $('#toast').textContent = message; $('#toast').style.display = 'block'; clearTimeout(toast.timer); toast.timer = setTimeout(() => $('#toast').style.display = 'none', 4500); }
 function allowed(team) { return demo || profile?.role === 'admin' || (profile?.role === 'director' && profile.team === team); }
 function options(select, teams) { select.replaceChildren(...teams.map(t => { const e = element('option', teamName(t)); e.value = t; return e; })); }
 function render() {
@@ -103,7 +104,7 @@ function render() {
   $('#window-label').textContent = windowOpen ? 'Janela aberta' : 'Janela fechada';
   $('#window-toggle').hidden = !(demo || profile?.role === 'admin');
   accessButton.hidden = profile?.role !== 'admin';
-  if (profile?.role !== 'admin' && accessDialog.open) accessDialog.close();
+  if (profile?.role !== 'admin') renderAccess();
   $('#login').textContent = demo ? 'Modo demonstração' : user ? `${profile?.role === 'admin' ? 'Administração' : teamName(profile?.team) || 'Sem acesso atribuído'} · Sair` : 'Entrar como diretor ↗';
   $('#team-grid').replaceChildren(...teamIds(true).map(team => {
     const count = players.filter(p => isActivePlayer(p) && p.teams.includes(team)).length;
@@ -264,7 +265,7 @@ $('#window-toggle').onclick = async () => { try { await mutate('setWindow', { op
 function renderHistory() {
   history.refresh();
 }
-setupPages(() => { duplicates.refresh(); teamManagement.refresh(); gameDay.refresh(); renderHistory(); });
+setupPages(() => { duplicates.refresh(); teamManagement.refresh(); gameDay.refresh(); renderAccess(); renderHistory(); });
 if (demo) {
   try { const stored = JSON.parse(localStorage.getItem('recreacao-demo-v1')); if (stored) { ({ players, logs, windowOpen } = stored); archivedPlayers = stored.archivedPlayers || []; teamCatalog = stored.teamCatalog || structuredClone(DEFAULT_TEAMS); reviews = stored.reviews || []; } } catch { localStorage.removeItem('recreacao-demo-v1'); }
   $('#mode-notice').textContent = 'Demonstração local · Experimente os cadastros e transferências. Os dados ficam apenas neste navegador até conectar o Firebase.';

@@ -14,6 +14,7 @@
     "deploy:rules": "firebase deploy --only firestore:rules"
   },
   "devDependencies": {
-    "firebase-tools": "^15.33.0"
+    "firebase-tools": "^15.33.0",
+    "linkedom": "^0.18.13"
   }
 }

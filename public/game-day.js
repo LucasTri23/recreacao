@@ -71,6 +71,16 @@ export function compareGameList(text,players,teamId) {
   });
 }
 export const GAME_ISSUES = {ok:'Vínculo confirmado no envio',unknown:'Nome sem cadastro confirmado',inactive:'Cadastro inativo, excluído ou alterado',otherTeam:'Jogador não pertence a este time'};
+export function rosterChoices(players,teamId,rows,query = '') {
+  const selected = new Set(rows.filter(row => !row.ignored).map(row => row.selectedId)), search = clean(query);
+  return players.filter(p => isActivePlayer(p) && p.teams.includes(teamId) && (selected.has(p.id) || clean(p.name+' '+p.congregation).includes(search)))
+    .sort((a,b) => Number(selected.has(b.id))-Number(selected.has(a.id)) || a.name.localeCompare(b.name,'pt-BR'));
+}
+export function gameReviewSummary(rows,players,teamId) {
+  const included = rows.filter(row => !row.ignored), byId = new Map(players.map(p => [p.id,p]));
+  const confirmed = included.filter(row => gameEntryIssue(byId.get(row.selectedId),teamId) === 'ok').length;
+  return {found:rows.length,included:included.length,confirmed,pending:included.length-confirmed,ignored:rows.length-included.length};
+}
 export function gameEntryIssue(player,teamId) {
   return !player ? 'unknown' : !isActivePlayer(player) ? 'inactive' : !player.teams.includes(teamId) ? 'otherTeam' : 'ok';
 }

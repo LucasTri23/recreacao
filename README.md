@@ -112,6 +112,10 @@ O cadastro oferece o botão “🧤 Ele é GOLEIRO?”. Goleiros podem ter inscr
 
 ## Dia de jogo
 
+A consulta pública fica em `#/dia-de-jogo`. A programação fica somente em `#/gerenciar-rodada`, com formulário visível apenas para admins. O diretor já vê seu próprio confronto e entra por “Montar minha escalação”; se já publicou, “Editar minha escalação” carrega a versão atual. O envio tem três etapas: escolher, conferir e publicar. O elenco possui busca sem acentos, contador e selecionados primeiro; o TXT exibe resumo e mantém as correspondências confirmadas recolhidas, com as pendências abertas. Na etapa final todos os nomes e avisos são apresentados antes da confirmação. No celular o botão principal fica fixo no rodapé, mudando conforme a etapa. O prazo e as permissões continuam sendo verificados pelo banco.
+
+Gerenciar acessos usa a página `#/gerenciar-acessos`, restrita à administração, com busca por nome/e-mail/time. Os avisos gerais da antiga faixa superior e as notificações de ações aparecem no canto superior direito por cinco segundos; erros de campos permanecem no formulário para correção.
+
 A consulta pública mostra um resumo dos times que enviaram a escalação e dos que ainda estão pendentes. Envio não significa ausência de irregularidades: os avisos continuam nos confrontos. Cada confronto oferece “Copiar confronto para WhatsApp”, com data, horário, campo, observações públicas e as últimas escalações publicadas, incluindo pendências de vínculo. Não compartilha congregações. Se o navegador bloquear a área de transferência, um campo permite copiar o texto manualmente. O botão apenas copia; o usuário escolhe onde enviar.
 
 Cada confronto tem horário (Brasília) e campo/local opcionais, exibidos publicamente; quando não preenchidos, aparecem como “a definir”. O horário deve estar em HH:MM e o local aceita até 120 caracteres em uma linha. Esses dados acompanham o confronto ao remover outros pares e são recuperados ao editar a programação. A data continua sendo a mesma para a rodada inteira.

@@ -1,8 +1,22 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {weekStart,weekDeadline,canSubmitSquad,compareGameList,gameWeekDetails,gameListEntries,gameEntryIssue,extractGameNames} from '../public/game-day.js';
+import {weekStart,weekDeadline,canSubmitSquad,compareGameList,gameWeekDetails,gameListEntries,gameEntryIssue,extractGameNames,rosterChoices,gameReviewSummary} from '../public/game-day.js';
 import {DEFAULT_TEAMS} from '../public/teams.js';
 const players = [{id:'a',name:'GABRIEL SLV',congregation:'CENTRO',teams:['VERDE']},{id:'b',name:'GABRIEL SOUZA',congregation:'NORTE',teams:['VERDE']},{id:'c',name:'JOÃO SILVA',congregation:'CENTRO',teams:['VERDE']},{id:'d',name:'PEDRO',congregation:'CENTRO',teams:['BRANCO']},{id:'e',name:'INATIVO',congregation:'CENTRO',teams:['VERDE'],status:'inactive'}];
+test('busca do elenco ignora acentos, mantém selecionados visíveis e os coloca primeiro', () => {
+  const rows = [{selectedId:'c',name:'JOÃO'}];
+  assert.deepEqual(rosterChoices(players,'VERDE',rows,'gabriel').map(p => p.id),['c','a','b']);
+  assert.deepEqual(rosterChoices(players,'VERDE',[],'joao').map(p => p.id),['c']);
+  assert.deepEqual(rosterChoices(players,'VERDE',[],'norte').map(p => p.id),['b']);
+  assert.deepEqual(rosterChoices(players,'VERDE',[]).map(p => p.id),['a','b','c']);
+});
+test('resumo de conferência separa confirmados, pendências e ignorados sem tratar aviso como bloqueio', () => {
+  const rows = compareGameList('Gabriel Slv\nPedro\nInativo\nDesconhecido\nIgnorar',players,'VERDE'); rows[4].ignored = true;
+  assert.deepEqual(gameReviewSummary(rows,players,'VERDE'),{found:5,included:4,confirmed:1,pending:3,ignored:1});
+  rows[3].selectedId = 'c';
+  assert.equal(gameReviewSummary(rows,players,'VERDE').confirmed,2);
+  assert.equal(gameListEntries(rows).length,4);
+});
 test('extrai jogadores de lista de WhatsApp com cabeçalho e comissão técnica', () => {
   const text = `**BRANCO X COYOTES
 *CAMPO SANTA CRUZ
