@@ -3,6 +3,7 @@ import { identity, membership, playerId, mergedTeams, playerStatus, isActivePlay
 import { setupDuplicates } from './duplicates.js';
 import { setupPages, PUBLIC_PAGES } from './pages.js';
 import {withPublicHistory,publicMovementDetail} from './public-history.js';
+import {setupPresentation} from './presentation.js';
 import { setupPlayerManagement } from './player-management.js';
 import { DEFAULT_TEAMS,TEAM_COLORS,changeTeam,teamActive } from './teams.js';
 import { setupTeamManagement } from './team-management.js';
@@ -272,6 +273,7 @@ $('#window-toggle').onclick = async () => { try { await mutate('setWindow', { op
 function renderHistory() {
   history.refresh();
 }
+setupPresentation();
 navigation = setupPages(() => { duplicates.refresh(); teamManagement.refresh(); gameDay.refresh(); renderAccess(); renderHistory(); },page => member() || PUBLIC_PAGES.includes(page));
 if (demo) {
   try { const stored = JSON.parse(localStorage.getItem('recreacao-demo-v1')); if (stored) { ({ players, logs, windowOpen } = stored); archivedPlayers = stored.archivedPlayers || []; teamCatalog = stored.teamCatalog || structuredClone(DEFAULT_TEAMS); reviews = stored.reviews || []; } } catch { localStorage.removeItem('recreacao-demo-v1'); }

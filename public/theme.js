@@ -10,7 +10,7 @@ function applyTheme(dark) {
     button.setAttribute('aria-pressed', String(dark));
   }
 }
-applyTheme(preference ? preference === 'dark' : media.matches);
+applyTheme(true);
 document.addEventListener('DOMContentLoaded', () => {
   applyTheme(document.documentElement.dataset.theme === 'dark');
   document.querySelector('#theme-toggle').onclick = () => {
