@@ -69,7 +69,7 @@ export function setupGameDay({element,getProfile,getUserId,getPlayers,getTeams,m
   }
   reference.onchange = () => { if (busy) return; try { watch(); } catch(error) { message.textContent = error.message; } };
   adminReference.onchange = () => { reference.value = adminReference.value; reference.onchange(); };
-  start.onclick = () => { opened = true; if (!rows.length && squads.some(s => s.teamId === choose.value)) loadCurrent.onclick(); else render(); editor.scrollIntoView({behavior:'smooth',block:'start'}); };
+  start.onclick = () => { opened = true; if (!rows.length && squads.some(s => s.teamId === choose.value)) loadPublished(); else render(); editor.scrollIntoView({behavior:'smooth',block:'start'}); };
   back.onclick = () => { if (busy) return; step = Math.max(1,step-1); ack.checked = false; render(); };
   rosterSearch.oninput = () => renderRoster();
   schedule.oninput = () => { dirty = true; updateDeadline(); };
@@ -112,8 +112,12 @@ export function setupGameDay({element,getProfile,getUserId,getPlayers,getTeams,m
     } catch(error) { scheduleError.textContent = error.message; }
     finally { saveWeek.disabled = false; }
   };
-  choose.onchange = () => { clearDraft(); opened = true; render(); };
-  mode.onchange = () => { clearDraft(); opened = true; render(); };
+  choose.onchange = () => { clearDraft(); opened = true; if (squads.some(s => s.teamId === choose.value)) loadPublished(); else render(); };
+  mode.onchange = () => {
+    step = 1; opened = true; ack.checked = false; submitError = '';
+    if (mode.value === 'txt' && rows.length) raw.value = rows.filter(row => !row.ignored).map(row => row.name).join('\n');
+    render();
+  };
   raw.oninput = () => { rows = []; submitError = ''; results.replaceChildren(); ack.checked = false; validate(); };
   function removalButton(row) {
     const button = element('button',row.ignored ? 'Restaurar na escalação' : 'Remover da escalação','row-action game-remove-player'); button.type = 'button'; button.disabled = busy;
@@ -195,12 +199,13 @@ export function setupGameDay({element,getProfile,getUserId,getPlayers,getTeams,m
     }
   }
   ack.onchange = validate;
-  loadCurrent.onclick = () => {
+  function loadPublished(review = false) {
     const squad = squads.find(s => s.teamId === choose.value);
-    mode.value = 'txt'; const current = entries.filter(e => e.teamId === choose.value && e.draftId === squad?.draftId).sort((a,b) => (a.position||0)-(b.position||0));
+    mode.value = review ? 'txt' : 'roster'; const current = entries.filter(e => e.teamId === choose.value && e.draftId === squad?.draftId).sort((a,b) => (a.position||0)-(b.position||0));
     raw.value = current.map(e => e.rawName || e.name).join('\n');
-    rows = current.map(entry => ({raw:entry.rawName || entry.name,name:entry.rawName || entry.name,selectedId:entry.playerId || '',candidates:[],outside:[],ignored:false})); opened = true; step = 2; renderRows(); render();
-  };
+    rows = current.map(entry => ({raw:entry.rawName || entry.name,name:entry.rawName || entry.name,selectedId:entry.playerId || '',candidates:[],outside:[],ignored:false})); opened = true; step = review ? 2 : 1; renderRows(); render();
+  }
+  loadCurrent.onclick = () => loadPublished();
   publish.onclick = async () => {
     if (busy) return;
     if (step < 3) {
@@ -303,7 +308,7 @@ export function setupGameDay({element,getProfile,getUserId,getPlayers,getTeams,m
           if (authorized && canSubmitSquad(profile,week,id,getTeams())) {
             const fix = element('button','Ajustar: escolher jogador do time','row-action');
             fix.disabled = busy;
-            fix.onclick = () => { choose.value = id; loadCurrent.onclick(); const select = results.children[index]?.querySelector('select'); results.children[index]?.scrollIntoView({behavior:'smooth',block:'center'}); select?.focus(); };
+            fix.onclick = () => { choose.value = id; loadPublished(true); const select = results.children[index]?.querySelector('select'); results.children[index]?.scrollIntoView({behavior:'smooth',block:'center'}); select?.focus(); };
             item.append(fix);
           }
         }

@@ -112,6 +112,8 @@ O cadastro oferece o botão “🧤 Ele é GOLEIRO?”. Goleiros podem ter inscr
 
 ## Dia de jogo
 
+Ao editar uma escalação publicada, o elenco já abre com os jogadores da última versão marcados. É possível desmarcar ou remover e depois publicar a atualização. Alternar entre elenco e TXT preserva os jogadores escolhidos; a escalação publicada permanece igual até confirmar a nova publicação.
+
 A consulta pública fica em `#/dia-de-jogo`. A programação fica somente em `#/gerenciar-rodada`, com formulário visível apenas para admins. O diretor já vê seu próprio confronto e entra por “Montar minha escalação”; se já publicou, “Editar minha escalação” carrega a versão atual. O envio tem três etapas: escolher, conferir e publicar. O elenco possui busca sem acentos, contador e selecionados primeiro; o TXT exibe resumo e mantém as correspondências confirmadas recolhidas, com as pendências abertas. Na etapa final todos os nomes e avisos são apresentados antes da confirmação. No celular o botão principal fica fixo no rodapé, mudando conforme a etapa. O prazo e as permissões continuam sendo verificados pelo banco.
 
 Gerenciar acessos usa a página `#/gerenciar-acessos`, restrita à administração, com busca por nome/e-mail/time. Os avisos gerais da antiga faixa superior e as notificações de ações aparecem no canto superior direito por cinco segundos; erros de campos permanecem no formulário para correção.

@@ -1,11 +1,11 @@
-import {test} from 'node:test';
+﻿import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {parseHTML} from 'linkedom';
 import {setupGameDay} from '../public/game-day-ui.js';
 import {localDay,weekStart} from '../public/game-day.js';
 import {DEFAULT_TEAMS} from '../public/teams.js';
 
-function setup(t,role = 'director') {
+function setup(t,role = 'director',published = false) {
   const {document,window} = parseHTML('<html><body><nav></nav><main><footer></footer></main></body></html>');
   window.Element.prototype.scrollIntoView = function() {};
   // LinkeDOM does not implement the select.value setter used by browsers.
@@ -17,8 +17,10 @@ function setup(t,role = 'director') {
   const previous = {document:globalThis.document,localStorage:globalThis.localStorage};
   const weekId = weekStart(localDay()), week = {weekId,gameDate:localDay(),teams:['VERDE','BRANCO'],teamNames:{VERDE:'VERDE',BRANCO:'BRANCO'},status:'open',cutoff:localDay(),deadline:Date.now()+86400000};
   const storage = new Map([['recreacao-games-demo',JSON.stringify({weeks:{[weekId]:week}})]]);
+  if (published) storage.set('recreacao-games-demo',JSON.stringify({weeks:{[weekId]:week},squads:{[weekId+'_VERDE']:{weekId,teamId:'VERDE',draftId:'published'}},entries:{one:{weekId,teamId:'VERDE',draftId:'published',playerId:'a',name:'JOÃO SILVA',rawName:'João',position:0,issue:'ok'},two:{weekId,teamId:'VERDE',draftId:'published',playerId:'c',name:'LUCAS',rawName:'Lucas',position:1,issue:'ok'}}}));
   globalThis.document = document; globalThis.localStorage = {getItem:key => storage.get(key),setItem:(key,value) => storage.set(key,value)};
   const players = [{id:'a',name:'JOÃO SILVA',congregation:'CENTRO',teams:['VERDE']},{id:'b',name:'PEDRO',congregation:'CENTRO',teams:['BRANCO']}];
+  if (published) players.push({id:'c',name:'LUCAS',congregation:'CENTRO',teams:['VERDE']});
   const element = (tag,text,className) => { const node = document.createElement(tag); if (text != null) node.textContent = text; if (className) node.className = className; return node; };
   const notices = [];
   const ui = setupGameDay({element,getProfile:() => ({role,team:'VERDE'}),getUserId:() => 'u',getPlayers:() => players,getTeams:() => DEFAULT_TEAMS,mutate:async () => {},toast:text => notices.push(text),demo:true});
@@ -82,3 +84,21 @@ test('jogador pode ser removido na conferência, restaurado e retirado antes de 
   preview.querySelector('button').onclick();
   assert.equal(ack.checked,false); assert.equal(button('Publicar 0 jogadores').disabled,true);
 });
+test('edição carrega confirmados marcados, mantém seleção entre modos e publica remoção',async t => {
+  const {document,button,storage} = setup(t,'director',true);
+  button('Editar minha escalação').onclick();
+  assert.equal(document.querySelector('fieldset input[value="a"]').checked,true);
+  assert.equal(document.querySelector('fieldset input[value="c"]').checked,true);
+  const mode = [...document.querySelectorAll('select')].find(select => select.querySelector('option[value="txt"]'));
+  mode.value = 'txt'; mode.onchange(); mode.value = 'roster'; mode.onchange();
+  assert.equal(document.querySelector('fieldset input[value="a"]').checked,true);
+  const remove = document.querySelector('button[aria-label="Remover João da escalação"]'); remove.onclick();
+  assert.equal(document.querySelector('fieldset input[value="a"]').checked,false);
+  assert.equal(document.querySelector('fieldset input[value="c"]').checked,true);
+  await button('Conferir lista').onclick(); await button('Revisar publicação').onclick();
+  const ack = document.querySelector('.game-panel>.duplicate-ack input'); ack.checked = true; ack.onchange();
+  await button('Publicar 1 jogador').onclick();
+  const saved = JSON.parse(storage.get('recreacao-games-demo')), squad = Object.values(saved.squads).find(s => s.teamId === 'VERDE');
+  assert.deepEqual(Object.values(saved.entries).filter(e => e.draftId === squad.draftId).map(e => e.playerId),['c']);
+});
+
