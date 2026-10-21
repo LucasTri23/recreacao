@@ -33,7 +33,7 @@ service cloud.firestore {
         && p.updatedAt == request.time && p.lastEvent is string;
     }
     function validPlayerCity(p) {
-      return p.city in ['Belo Horizonte','Baldim','Betim','Caeté','Capim Branco','Confins','Contagem','Conselheiro Lafaiete','Esmeraldas','Florestal','Ibirité','Igarapé','Itaguara','Itatiaiuçu','Jaboticatubas','Juatuba','Lagoa Santa','Mário Campos','Mateus Leme','Matozinhos','Nova Lima','Nova União','Pedro Leopoldo','Raposos','Ribeirão das Neves','Rio Acima','Rio Manso','Sabará','Santa Luzia','São Joaquim de Bicas','São José da Lapa','Sarzedo','Taquaraçu de Minas','Vespasiano']
+      return p.city in ['Belo Horizonte','Baldim','Betim','Caeté','Capim Branco','Confins','Contagem','Conselheiro Lafaiete','Esmeraldas','Florestal','Ibirité','Igarapé','Itaguara','Itatiaiuçu','Jaboticatubas','Juatuba','Lagoa Santa','Mário Campos','Mateus Leme','Matozinhos','Nova Lima','Nova União','Pedro Leopoldo','Raposos','Ribeirão das Neves','Rio Acima','Rio Manso','Sabará','Santa Luzia','São Joaquim de Bicas','São José da Lapa','Sarzedo','Sete Lagoas','Taquaraçu de Minas','Vespasiano']
         && (normalized(p.congregation).matches('.* [-–—] '+normalized(p.city))
           || (p.city == 'Belo Horizonte' && normalized(p.congregation).matches('.* [-–—] bh')));
     }
