@@ -12,7 +12,7 @@ export function cityCongregation(value,city,known = []) {
   if (congregation.length < 2) throw Error('Informe o nome da congregação.');
   if (parts.city && parts.city !== city) throw Error('A cidade no texto da congregação é diferente da cidade selecionada.');
   const existing = known.find(item => { const p = splitCongregation(item); return p.city === city && key(p.congregation) === key(congregation); });
-  const combined = (existing || `${congregation} - ${city}`).toLocaleUpperCase('pt-BR').trim().replace(/\s+/g,' ');
+  const combined = (existing || `${congregation} - ${city}`).replace(/\bBH\s*$/i,'BELO HORIZONTE').toLocaleUpperCase('pt-BR').trim().replace(/\s+/g,' ');
   if (combined.length > 120) throw Error('Congregação e cidade devem somar até 120 caracteres.');
   return {congregation:combined,city};
 }

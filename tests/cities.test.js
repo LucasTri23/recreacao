@@ -19,12 +19,13 @@ test('cidade é validada e a mesma congregação em municípios distintos tem id
   for (const city of ['',null,'Outra cidade','bh']) assert.throws(() => playerDetails({...data,city}),/cidade da lista/);
   assert.throws(() => cityCongregation('Centro - Betim','Belo Horizonte'),/diferente/);
 });
-test('abreviação e separador legados mantêm o identificador e não duplicam a cidade', async () => {
+test('BH é expandido e os demais separadores legados não duplicam a cidade', async () => {
   const known = ['GLÓRIA - BH','SANTA CLARA – VESPASIANO'];
   for (const [base,city,old] of [['Glória','Belo Horizonte',known[0]],['Santa Clara','Vespasiano',known[1]]]) {
     const result = cityCongregation(base,city,known);
-    assert.equal(result.congregation,old);
-    assert.equal(await playerId('João',result.congregation),await playerId('João',old));
+    const expected = old.replace(/\bBH$/,'BELO HORIZONTE');
+    assert.equal(result.congregation,expected);
+    assert.equal(await playerId('João',result.congregation),await playerId('João',expected));
     assert.deepEqual(playerDetails({name:'João',...result}).city,city);
   }
 });

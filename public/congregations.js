@@ -5,21 +5,21 @@ const expanded = value => key(value).replace(/\bbh\b/g,'belo horizonte');
 export function congregationOptions(players) {
   const unique = new Map();
   for (const p of players) {
-    const name = playerName(p.congregation).trim().replace(/\s+/g,' ');
+    const name = playerName(p.congregation).replace(/\bBH\s*$/i,'BELO HORIZONTE').trim().replace(/\s+/g,' ');
     if (name && !unique.has(key(name))) unique.set(key(name),name);
   }
   return [...unique.values()].sort((a,b) => a.localeCompare(b,'pt-BR'));
 }
 export function standardCongregation(value,known) {
-  return playerName(known.find(name => key(name) === key(value)) || value).trim().replace(/\s+/g,' ');
+  return playerName(known.find(name => expanded(name) === expanded(value)) || value).replace(/\bBH\s*$/i,'BELO HORIZONTE').trim().replace(/\s+/g,' ');
 }
 export function congregationSuggestions(value,known) {
   const query = expanded(value);
-  if (query.length < 2 || known.some(name => key(name) === key(value))) return [];
+  if (query.length < 2 || known.some(name => expanded(name) === query)) return [];
   return known.map(name => {
     const candidate = expanded(name);
     return {name,score:candidate.includes(query) || query.includes(candidate) ? 1 : similarity(query,candidate)};
-  }).filter(item => item.score >= .6).sort((a,b) => b.score-a.score).slice(0,5).map(item => playerName(item.name));
+  }).filter(item => item.score >= .6).sort((a,b) => b.score-a.score).slice(0,5).map(item => playerName(item.name).replace(/\bBH\s*$/i,'BELO HORIZONTE'));
 }
 export function setupCongregations({element,getPlayers}) {
   document.addEventListener('focusin',show);

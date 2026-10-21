@@ -23,12 +23,12 @@ function setup(profile, seed = {}) {
 test('admin cadastra UZIEL LUCAS no PRETO com congregação acentuada e sem vínculo de time', async () => {
   const {api,records} = setup({role:'admin',displayName:'Outro Admin',email:'admin@example.com'});
   await api('addPlayer',{name:'UZIEL LUCAS',congregation:'GLÓRIA - BH',team:'PRETO'});
-  const id = await playerId('UZIEL LUCAS','GLÓRIA - BH');
+  const id = await playerId('UZIEL LUCAS','GLÓRIA - BELO HORIZONTE');
   assert.deepEqual(records.get('players/'+id).teams,['PRETO']);
-  assert.equal(records.get('players/'+id).congregation,'GLÓRIA - BH');
+  assert.equal(records.get('players/'+id).congregation,'GLÓRIA - BELO HORIZONTE');
   assert.equal(records.get('events/e1').actorName,'Outro Admin');
 });
-test('cidade obrigatória no formulário compõe a identidade e edição preserva abreviação antiga', async () => {
+test('cidade obrigatória compõe a identidade e edição expande BH mantendo o redirecionamento', async () => {
   const {api,records,sdk} = setup({role:'admin'});
   await api('addPlayer',{name:'Cidade Teste',congregation:'Vera Cruz de Minas',city:'Pedro Leopoldo',team:'PRETO'});
   const id = await playerId('Cidade Teste','VERA CRUZ DE MINAS - PEDRO LEOPOLDO');
@@ -38,11 +38,12 @@ test('cidade obrigatória no formulário compõe a identidade e edição preserv
   records.set('players/'+oldId,{name:'ANTIGO TESTE',congregation:'GLÓRIA - BH',teams:['PRETO'],updatedAt:1,lastEvent:'old'});
   const legacyApi = createFirebaseApi(sdk,{}, {currentUser:{uid:'director'}},() => ['GLÓRIA - BH']);
   await legacyApi('editPlayer',{id:oldId,name:'Antigo Teste',congregation:'Glória',city:'Belo Horizonte'});
-  assert.equal(records.get('players/'+oldId).city,'Belo Horizonte');
-  assert.equal(records.get('players/'+oldId).congregation,'GLÓRIA - BH');
-  assert.equal(records.get('players/'+oldId).mergedInto,undefined);
+  const newId = await playerId('Antigo Teste','GLÓRIA - BELO HORIZONTE');
+  assert.equal(records.get('players/'+newId).city,'Belo Horizonte');
+  assert.equal(records.get('players/'+newId).congregation,'GLÓRIA - BELO HORIZONTE');
+  assert.equal(records.get('players/'+oldId).mergedInto,newId);
   await legacyApi('addPlayer',{name:'Antigo Teste',congregation:'Glória',city:'Belo Horizonte',team:'BRANCO'});
-  assert.deepEqual(records.get('players/'+oldId).teams,['PRETO','BRANCO']);
+  assert.deepEqual(records.get('players/'+newId).teams,['PRETO','BRANCO']);
 });
 test('goleiro entra em três times, não duplica inscrição e só admin muda a classificação existente', async () => {
   const {api,records} = setup({role:'admin'});
