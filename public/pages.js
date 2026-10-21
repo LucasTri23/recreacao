@@ -1,4 +1,4 @@
-const titles = {times:'Nossos times',jogadores:'Jogadores',movimentacoes:'Movimentações',duplicidades:'Duplicidades','gerenciar-times':'Gerenciar times'};
+const titles = {times:'Times',jogadores:'Jogadores',movimentacoes:'Movimentações',duplicidades:'Duplicidades','gerenciar-times':'Gerenciar times'};
 export function currentPage(hash = location.hash) {
   const key = hash.replace(/^#\/?/,'');
   return Object.hasOwn(titles,key) ? key : 'times';
@@ -13,7 +13,7 @@ export function setupPages(onChange) {
       if (active) link.setAttribute('aria-current','page'); else link.removeAttribute('aria-current');
     });
     document.querySelector('#page-label').textContent = titles[page];
-    document.title = `${titles[page]} · Recreação`;
+    document.title = `${titles[page]} · BID da Recreação`;
     onChange(page);
     if (focus) {
       const heading = document.querySelector(`[data-page="${page}"] h2, [data-page="${page}"] h1`);

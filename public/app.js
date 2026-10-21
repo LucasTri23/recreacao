@@ -106,7 +106,7 @@ function render() {
     const badge = element('span', teamCatalog[team].badge, 'team-badge'); badge.setAttribute('aria-hidden','true');
     const top = element('div', null, 'team-top'); top.append(badge, element('span', '⋯'));
     const p = element('p'); p.append(element('b', String(count)), document.createTextNode(` ${count === 1 ? 'jogador' : 'jogadores'}`));
-    const bottom = element('div', null, 'team-bottom'); bottom.append(element('span', 'Conhecer o time'), element('span', '↗'));
+    const bottom = element('div', null, 'team-bottom'); bottom.append(element('span', 'Consultar registros'), element('span', '↗'));
     card.append(top, element('h3', teamName(team)), p, bottom);
     card.onclick = () => { $('#team-filter').value = team; statusFilter.value = 'active'; $('#search').value = ''; filter = 'all'; document.querySelectorAll('[data-filter]').forEach(b => b.classList.toggle('selected',b.dataset.filter === 'all')); renderPlayers(); location.hash = '/jogadores'; }; return card;
   }));
@@ -122,8 +122,8 @@ function renderPlayers() {
   const list = players.filter(p => (statusFilter.value === 'all' || playerStatus(p) === statusFilter.value) && (!selected || p.teams.includes(selected)) && (filter !== 'two' || p.teams.length === 2) && identity(p.name + ' ' + p.congregation + ' ' + p.teams.map(teamName).join(' '), '').includes(search.slice(0, -1))).sort((a,b) => a.name.localeCompare(b.name, 'pt-BR'));
   $('#results-count').textContent = `${list.length} ${list.length === 1 ? 'jogador' : 'jogadores'}`;
   $('#empty').hidden = list.length > 0;
-  $('#empty h3').textContent = players.length ? 'Nenhum jogador encontrado' : 'A turma começa por aqui';
-  $('#empty p').textContent = players.length ? 'Tente outro nome, congregação ou filtro.' : 'Cadastre o primeiro jogador e reúna os irmãos nos times.';
+  $('#empty h3').textContent = players.length ? 'Nenhum jogador encontrado' : 'Nenhum jogador cadastrado';
+  $('#empty p').textContent = players.length ? 'Tente outro nome, congregação ou filtro.' : 'Adicione um jogador para registrar sua inscrição em um time.';
   $('#empty-add').hidden = players.length > 0;
   $('#player-list').replaceChildren(...list.map(p => {
     const row = element('tr'); const name = element('td'); const person = element('div', null, 'person');

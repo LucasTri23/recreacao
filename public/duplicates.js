@@ -27,7 +27,7 @@ export function setupDuplicates({element,getPlayers,getReviews = () => [],isAdmi
       const use = element('button','É a mesma pessoa · usar cadastro','row-action'); use.type = 'button';
       use.onclick = () => {
         if (!isActivePlayer(player)) return toast('Peça à administração para reativar ou restaurar este cadastro.');
-        if (player.teams.length >= 2) return toast('Este irmão já participa de dois times. Não crie outro cadastro para inscrevê-lo novamente.');
+        if (player.teams.length >= 2) return toast('Este jogador já possui dois vínculos. Não crie outro cadastro para inscrevê-lo novamente.');
         const dialog = form.closest('dialog'); dialog.close(); openAdd(player);
       };
       card.append(use);
@@ -78,7 +78,7 @@ export function setupDuplicates({element,getPlayers,getReviews = () => [],isAdmi
     label.append(select);
     const preview = element('div',null,'duplicate-card'), ack = element('label',null,'duplicate-ack');
     const confirmed = element('input'); confirmed.type = 'checkbox'; confirmed.required = true;
-    ack.append(confirmed,element('span','Conferi: os dois cadastros pertencem ao mesmo irmão.'));
+    ack.append(confirmed,element('span','Conferi: os dois cadastros pertencem ao mesmo jogador.'));
     const error = element('p',null,'form-error'); error.setAttribute('role','alert');
     const save = element('button','Unificar cadastros','primary'); save.type = 'submit';
     function updatePreview() {
