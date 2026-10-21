@@ -1,7 +1,8 @@
 import { firebaseConfig } from './firebase-config.js';
 import { identity, membership, playerId, mergedTeams, playerStatus, isActivePlayer, playerDetails,playerName,reviewKey,reusableIdentity } from './domain.js';
 import { setupDuplicates } from './duplicates.js';
-import { setupPages } from './pages.js';
+import { setupPages, PUBLIC_PAGES } from './pages.js';
+import {withPublicHistory,publicMovementDetail} from './public-history.js';
 import { setupPlayerManagement } from './player-management.js';
 import { DEFAULT_TEAMS,TEAM_COLORS,changeTeam,teamActive } from './teams.js';
 import { setupTeamManagement } from './team-management.js';
@@ -21,6 +22,8 @@ const teamIds = (activeOnly = false) => Object.keys(teamCatalog).filter(id => !a
 const teamName = id => teamCatalog[id]?.name || id;
 let players = [], logs = [], windowOpen = false, profile = null, user = null, api = null, filter = 'all', transferring = null;
 const demo = !firebaseConfig;
+const member = () => demo || ['admin','director'].includes(profile?.role);
+let navigation = null;
 let reviews = [], playersReady = demo, teamsReady = demo;
 let historyLimit = 100, historyHasMore = false, historyLoading = false, historyLoader = null;
 let accessUsers = [];
@@ -29,7 +32,7 @@ const duplicates = setupDuplicates({element,getPlayers:() => players,getReviews:
 const management = setupPlayerManagement({element,isAdmin:() => demo || profile?.role === 'admin',getPlayers:() => players,mutate,toast,teamName});
 const teamManagement = setupTeamManagement({element,isAdmin:() => demo || profile?.role === 'admin',getTeams:() => teamCatalog,getPlayers:() => players,getUsers:() => accessUsers,mutate,toast});
 const roster = setupRoster({element,getPlayers:() => players,getTeams:() => teamCatalog,canExport:() => playersReady && teamsReady && (demo || ['admin','director'].includes(profile?.role)),toast});
-const history = setupHistory({element,getLogs:() => logs,getTeams:() => teamCatalog,getPlayers:() => [...players,...archivedPlayers],getUsers:() => accessUsers,canRead:() => demo || ['admin','director'].includes(profile?.role),canLoadMore:() => historyHasMore,isLoading:() => historyLoading,loadMore:() => historyLoader?.()});
+const history = setupHistory({element,getLogs:() => logs,getTeams:() => teamCatalog,getPlayers:() => [...players,...archivedPlayers],getUsers:() => accessUsers,showAuthors:member,canRead:() => true,canLoadMore:() => historyHasMore,isLoading:() => historyLoading,loadMore:() => historyLoader?.()});
 const gameDay = setupGameDay({element,getProfile:() => demo ? {role:'admin'} : profile,getUserId:() => user?.uid,getPlayers:() => players,getTeams:() => teamCatalog,mutate,toast,demo});
 setupCongregations({element,getPlayers:() => [...players,...archivedPlayers]});
 const statusFilter = element('select'); statusFilter.id = 'status-filter'; statusFilter.setAttribute('aria-label','Filtrar situação do jogador');
@@ -89,8 +92,10 @@ function element(tag, text, className) { const e = document.createElement(tag); 
 function allowed(team) { return demo || profile?.role === 'admin' || (profile?.role === 'director' && profile.team === team); }
 function options(select, teams) { select.replaceChildren(...teams.map(t => { const e = element('option', teamName(t)); e.value = t; return e; })); }
 function render() {
+  navigation?.refresh();
+  for (const id of ['#add-player','#players-add','#empty-add']) $(id).hidden = !member();
   gameDay.refresh();
-  $('#player-count').textContent = players.filter(isActivePlayer).length;
+  $('#player-count').textContent = member() ? players.filter(isActivePlayer).length : '—';
   statusFilter.hidden = !(demo || profile?.role === 'admin');
   if (statusFilter.hidden) statusFilter.value = 'active';
   management.refresh();
@@ -101,20 +106,22 @@ function render() {
   $('#teams-count').textContent = teamIds(true).length;
   $('#teams-heading-count').textContent = ` (${teamIds(true).length})`;
   if (profile?.role === 'director') $('#mode-notice').textContent = `Diretor · ${teamName(profile.team)}.${teamActive(teamCatalog,profile.team) ? ' Você pode cadastrar e transferir jogadores do seu time.' : ' Time inativo ou excluído: novas inscrições estão bloqueadas; transferências de saída seguem a janela.'}`;
-  $('#window-label').textContent = windowOpen ? 'Janela aberta' : 'Janela fechada';
+  $('#window-label').textContent = member() ? (windowOpen ? 'Janela aberta' : 'Janela fechada') : 'Consulta pública';
   $('#window-toggle').hidden = !(demo || profile?.role === 'admin');
   accessButton.hidden = profile?.role !== 'admin';
   if (profile?.role !== 'admin') renderAccess();
   $('#login').textContent = demo ? 'Modo demonstração' : user ? `${profile?.role === 'admin' ? 'Administração' : teamName(profile?.team) || 'Sem acesso atribuído'} · Sair` : 'Entrar como diretor ↗';
   $('#team-grid').replaceChildren(...teamIds(true).map(team => {
     const count = players.filter(p => isActivePlayer(p) && p.teams.includes(team)).length;
-    const card = element('button', null, 'team-card'); card.style.cssText = style(team);
+    const card = element(member() ? 'button' : 'article', null, 'team-card'); card.style.cssText = style(team);
     const badge = element('span', teamCatalog[team].badge, 'team-badge'); badge.setAttribute('aria-hidden','true');
     const top = element('div', null, 'team-top'); top.append(badge, element('span', '⋯'));
     const p = element('p'); p.append(element('b', String(count)), document.createTextNode(` ${count === 1 ? 'jogador' : 'jogadores'}`));
+    if (!member()) p.textContent = 'Time registrado';
     const bottom = element('div', null, 'team-bottom'); bottom.append(element('span', 'Consultar registros'), element('span', '↗'));
+    if (!member()) bottom.replaceChildren(element('span','Registro ativo'));
     card.append(top, element('h3', teamName(team)), p, bottom);
-    card.onclick = () => { $('#team-filter').value = team; statusFilter.value = 'active'; $('#search').value = ''; filter = 'all'; document.querySelectorAll('[data-filter]').forEach(b => b.classList.toggle('selected',b.dataset.filter === 'all')); renderPlayers(); location.hash = '/jogadores'; }; return card;
+    if (member()) card.onclick = () => { $('#team-filter').value = team; statusFilter.value = 'active'; $('#search').value = ''; filter = 'all'; document.querySelectorAll('[data-filter]').forEach(b => b.classList.toggle('selected',b.dataset.filter === 'all')); renderPlayers(); location.hash = '/jogadores'; }; return card;
   }));
   if (!teamIds(true).length) $('#team-grid').append(element('p','Nenhum time ativo. A administração pode criar ou reativar times em Gerenciar times.'));
   $('#congregations').replaceChildren(...congregationOptions([...players,...archivedPlayers]).map(c => { const o = element('option'); o.value = c; return o; }));
@@ -265,7 +272,7 @@ $('#window-toggle').onclick = async () => { try { await mutate('setWindow', { op
 function renderHistory() {
   history.refresh();
 }
-setupPages(() => { duplicates.refresh(); teamManagement.refresh(); gameDay.refresh(); renderAccess(); renderHistory(); });
+navigation = setupPages(() => { duplicates.refresh(); teamManagement.refresh(); gameDay.refresh(); renderAccess(); renderHistory(); },page => member() || PUBLIC_PAGES.includes(page));
 if (demo) {
   try { const stored = JSON.parse(localStorage.getItem('recreacao-demo-v1')); if (stored) { ({ players, logs, windowOpen } = stored); archivedPlayers = stored.archivedPlayers || []; teamCatalog = stored.teamCatalog || structuredClone(DEFAULT_TEAMS); reviews = stored.reviews || []; } } catch { localStorage.removeItem('recreacao-demo-v1'); }
   $('#mode-notice').textContent = 'Demonstração local · Experimente os cadastros e transferências. Os dados ficam apenas neste navegador até conectar o Firebase.';
@@ -278,8 +285,9 @@ if (demo) {
     const [appSDK, authSDK, dbSDK] = await Promise.all(['firebase-app.js','firebase-auth.js','firebase-firestore.js'].map(p => import(base + p)));
     const app = appSDK.initializeApp(firebaseConfig), auth = authSDK.getAuth(app), db = dbSDK.getFirestore(app);
     const { createFirebaseApi, ensureAccessProfile } = await import('./firebase-store.js');
-    api = createFirebaseApi(dbSDK, db, auth,() => congregationOptions([...players,...archivedPlayers]));
-    gameDay.connect(dbSDK,db);
+    const writingSDK = withPublicHistory(dbSDK,db);
+    api = createFirebaseApi(writingSDK, db, auth,() => congregationOptions([...players,...archivedPlayers]));
+    gameDay.connect(writingSDK,db);
     $('#login').onclick = async () => { try { if (auth.currentUser) await authSDK.signOut(auth); else await authSDK.signInWithPopup(auth, new authSDK.GoogleAuthProvider()); } catch(e) { toast(e.message); } };
     let unsubscribers = [], dataSubscriptions = [], authVersion = 0;
     authSDK.onAuthStateChanged(auth, async current => {
@@ -287,7 +295,26 @@ if (demo) {
       unsubscribers.forEach(u => u()); unsubscribers = [];
       dataSubscriptions.forEach(u => u()); dataSubscriptions = [];
       user = current; profile = null; players = []; archivedPlayers = []; logs = []; accessUsers = []; reviews = []; playersReady = false; teamsReady = false; historyLimit = 100; historyHasMore = false; historyLoading = false; historyLoader = null; windowOpen = false; teamCatalog = structuredClone(DEFAULT_TEAMS); render();
-      if (!current) { $('#mode-notice').textContent = 'Entre com sua conta de diretor para acessar os jogadores.'; return; }
+      const publicError = e => toast('Não foi possível carregar a consulta pública: '+e.message);
+      function subscribePublic() {
+        dataSubscriptions.push(dbSDK.onSnapshot(dbSDK.doc(db,'settings','teams'),s => {
+          if (version !== authVersion || member()) return;
+          teamCatalog = s.data()?.items || structuredClone(DEFAULT_TEAMS); teamsReady = true; render();
+        },publicError));
+        let stop = null, request = 0;
+        function load() {
+          const revision = ++request; stop?.(); historyLoading = true;
+          stop = dbSDK.onSnapshot(dbSDK.query(dbSDK.collection(db,'publicEvents'),dbSDK.orderBy('at','desc'),dbSDK.limit(historyLimit)),s => {
+            if (version !== authVersion || member() || revision !== request) return;
+            logs = s.docs.map(d => ({...d.data(),id:d.id,detail:publicMovementDetail(d.data(),teamCatalog)}));
+            historyHasMore = s.docs.length === historyLimit; historyLoading = false; renderHistory();
+          },publicError);
+        }
+        dataSubscriptions.push(() => { request++; stop?.(); });
+        historyLoader = () => { if (!historyLoading && historyHasMore) { historyLimit += 100; load(); } };
+        load();
+      }
+      if (!current) { $('#mode-notice').textContent = 'Consulta pública · Dia de jogo, times e movimentações. Entre como diretor para gerenciar inscrições.'; subscribePublic(); return; }
       try {
         const accessResult = await ensureAccessProfile(dbSDK,db,current);
         if (accessResult?.metadataSyncPending) toast('Você entrou. O e-mail da conta será atualizado quando as regras do banco forem publicadas.');
@@ -299,7 +326,7 @@ if (demo) {
           profile = snap.data(); players = []; archivedPlayers = []; logs = []; accessUsers = []; reviews = []; playersReady = false; teamsReady = false; historyLimit = 100; historyHasMore = false; historyLoading = false; historyLoader = null; windowOpen = false; teamCatalog = structuredClone(DEFAULT_TEAMS);
           if (!['admin','director'].includes(profile?.role)) {
             $('#mode-notice').textContent = 'Seu pedido de acesso foi enviado. Aguarde o administrador vincular sua conta a um time; esta tela será atualizada automaticamente.';
-            render(); return;
+            subscribePublic(); render(); return;
           }
           $('#mode-notice').textContent = profile.role === 'admin' ? 'Administração · Use Gerenciar acessos para liberar diretores e escolher seus times.' : `Diretor · ${profile.team}. Você pode cadastrar e transferir jogadores do seu time.`;
           const active = callback => value => { if (version === authVersion && ['admin','director'].includes(profile?.role)) callback(value); };

@@ -141,7 +141,7 @@ test('terceira inscrição e janela fechada não geram histórico ou alteração
     [`players/${id}`]:{name:'João Silva',congregation:'Centro',teams:['BRANCO','VERDE']},
     'settings/transfers':{open:false}
   });
-  await assert.rejects(api('addPlayer',{name:'João Silva',congregation:'Centro',team:'BLUES'}),/dois times/);
+  await assert.rejects(api('addPlayer',{name:'João Silva',congregation:'Centro',team:'BLUES'}),/dois times: BRANCO e VERDE/);
   await assert.rejects(api('transferPlayer',{id,from:'BRANCO',to:'BLUES'}),/fechada/);
   assert.equal(records.size,3);
   assert.deepEqual(records.get(`players/${id}`).teams,['BRANCO','VERDE']);

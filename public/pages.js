@@ -3,11 +3,14 @@ export function currentPage(hash = location.hash) {
   const key = hash.replace(/^#\/?/,'');
   return Object.hasOwn(titles,key) ? key : 'times';
 }
-export function setupPages(onChange) {
+export const PUBLIC_PAGES = ['times','dia-de-jogo','movimentacoes'];
+export function setupPages(onChange,canAccess = () => true) {
   function show(focus = false) {
-    const page = currentPage();
+    let page = currentPage();
+    if (!canAccess(page)) { location.hash = '#/times'; page = 'times'; }
     document.querySelectorAll('[data-page]').forEach(section => section.hidden = section.dataset.page !== page);
     document.querySelectorAll('[data-nav]').forEach(link => {
+      if (link.dataset.nav === 'jogadores') link.hidden = !canAccess('jogadores');
       const active = link.dataset.nav === page;
       link.classList.toggle('active',active);
       if (active) link.setAttribute('aria-current','page'); else link.removeAttribute('aria-current');
@@ -23,4 +26,5 @@ export function setupPages(onChange) {
   }
   window.addEventListener('hashchange',() => show(true));
   show();
+  return {refresh:() => show()};
 }

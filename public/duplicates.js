@@ -27,11 +27,11 @@ export function setupDuplicates({element,getPlayers,getReviews = () => [],isAdmi
       const use = element('button','É a mesma pessoa · usar cadastro','row-action'); use.type = 'button';
       use.onclick = () => {
         if (!isActivePlayer(player)) return toast('Peça à administração para reativar ou restaurar este cadastro.');
-        if (!player.goalkeeper && player.teams.length >= 2) return toast('Este jogador já possui dois vínculos. Não crie outro cadastro para inscrevê-lo novamente.');
+        if (!player.goalkeeper && player.teams.length >= 2) return toast(`Este jogador já está inscrito em ${player.teams.map(teamName).join(' e ')}. Limite de dois times atingido.`);
         const dialog = form.closest('dialog'); dialog.close(); openAdd(player);
       };
       card.append(use);
-      if (!player.goalkeeper && player.teams.length >= 2) card.append(element('p','Limite de dois times atingido.'));
+      if (!player.goalkeeper && player.teams.length >= 2) card.append(element('p',`Limite de dois times atingido: ${player.teams.map(teamName).join(' e ')}.`));
       if (player.goalkeeper) card.append(element('p','🧤 Goleiro · sem limite de times.'));
       suggestions.append(card);
     }

@@ -42,7 +42,7 @@ export function eventAuthor(event,users = []) {
   const account = users.find(user => user.id === event.actor);
   return event.actorName || account?.displayName || account?.email || (event.actor ? 'Diretor não identificado neste registro antigo' : 'Responsável não registrado');
 }
-export function setupHistory({element,getLogs,getTeams,getPlayers,getUsers = () => [],loadMore,canLoadMore,isLoading,canRead}) {
+export function setupHistory({element,getLogs,getTeams,getPlayers,getUsers = () => [],showAuthors = () => true,loadMore,canLoadMore,isLoading,canRead}) {
   const list = document.querySelector('#history-list'), section = list.closest('section');
   const controls = element('form',null,'history-filters'); controls.setAttribute('aria-label','Filtros de movimentações');
   const inputs = {};
@@ -76,7 +76,7 @@ export function setupHistory({element,getLogs,getTeams,getPlayers,getUsers = () 
     catch(e) { feedback.textContent = e.message; feedback.className = 'form-error'; }
     for (const event of matches) {
       const item = element('div',null,'history-item'), time = eventTime(event);
-      item.append(element('small',`Responsável: ${eventAuthor(event,getUsers())}`,'history-author'));
+      if (showAuthors()) item.append(element('small',`Responsável: ${eventAuthor(event,getUsers())}`,'history-author'));
       item.append(element('strong',event.name),element('span',HISTORY_ACTIONS[event.kind || 'legacy'] || event.kind,'history-kind'),element('div',event.detail),element('small',Number.isFinite(time) ? new Date(time).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}) + ' · Brasília' : 'Data indisponível')); list.append(item);
     }
     if (!matches.length) list.append(element('p',canRead() ? 'Nenhuma movimentação encontrada. Ajuste os filtros ou carregue registros mais antigos.' : 'Entre com uma conta autorizada para consultar as movimentações.'));

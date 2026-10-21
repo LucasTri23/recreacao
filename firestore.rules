@@ -316,8 +316,21 @@ service cloud.firestore {
       allow delete: if false;
     }
     match /settings/teams {
-      allow read: if member();
+      allow read: if true;
       allow create, update: if admin() && validTeamEvent(request.resource.data.lastEvent);
+      allow delete: if false;
+    }
+    match /publicEvents/{id} {
+      allow read: if true;
+      allow create, update: if member()
+        && request.resource.data.keys().hasAll(['kind','name','at','from','to','teams'])
+        && request.resource.data.keys().hasOnly(['kind','name','at','from','to','teams'])
+        && request.resource.data.kind == getAfter(/databases/$(database)/documents/events/$(id)).data.get('kind','legacy')
+        && request.resource.data.name == getAfter(/databases/$(database)/documents/events/$(id)).data.get('name','')
+        && request.resource.data.at == getAfter(/databases/$(database)/documents/events/$(id)).data.at
+        && request.resource.data.from == getAfter(/databases/$(database)/documents/events/$(id)).data.get('from','')
+        && request.resource.data.to == getAfter(/databases/$(database)/documents/events/$(id)).data.get('to','')
+        && request.resource.data.teams == getAfter(/databases/$(database)/documents/events/$(id)).data.get('teams',[]);
       allow delete: if false;
     }
     match /events/{id} {

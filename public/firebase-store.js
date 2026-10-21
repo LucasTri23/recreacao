@@ -134,6 +134,7 @@ export function createFirebaseApi(sdk, db, auth, getCongregations = () => []) {
           to = data.team;
           if (!allowed(to)) throw Error('Você só pode cadastrar no seu próprio time.');
           if (!teamActive(teams,to)) throw Error('Time inválido, inativo ou excluído.');
+          if (previous && !previous.goalkeeper && previous.teams.length >= 2 && !previous.teams.includes(to)) throw Error(`Este jogador já participa de dois times: ${previous.teams.map(id => teams[id]?.name || id).join(' e ')}. Use a transferência durante a janela.`);
           next = {...(previous || details), teams:membership(previous || {...details,teams:[]}, to)};
         } else if (action === 'transferPlayer') {
           const window = (await tx.get(doc(db,'settings','transfers'))).data();
