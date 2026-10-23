@@ -38,3 +38,10 @@ test('datas ausentes são excluídas com período; aceita timestamps serializado
   assert.deepEqual(filterHistory(logs,{player:'ninguem'}),[]);
   assert.deepEqual(filterHistory(logs,{}).map(e => e.id),['d','c','b','a']);
 });
+
+ test('somente administradores consultam todas as acoes do hist?rico',async () => {
+  const {visibleHistory,HISTORY_ACTIONS} = await import('../public/history.js');
+  const events = Object.keys(HISTORY_ACTIONS).map(kind => ({kind}));
+  assert.deepEqual(visibleHistory(events,false).map(e => e.kind),['add','transfer']);
+  assert.equal(visibleHistory(events,true).length,events.length);
+});

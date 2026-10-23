@@ -19,3 +19,13 @@ test('resumo é salvo na mesma transação do histórico, sem alterar outras esc
   assert.equal(writes[1].data.actor,undefined);
   assert.equal(writes[3].ref.path,'publicTeamPlayers/p');
 });
+
+test('edicoes e demais acoes administrativas nao geram resumo publico',async () => {
+  const writes=[];
+  const sdk={doc:(_,collection,id)=>({path:collection+'/'+id}),runTransaction:async (_,callback)=>callback({set:(ref,data)=>writes.push({ref,data})})};
+  for (const kind of ['edit','status','merge','duplicateReview','team','window','gameWeek','gameSquad','legacy']) {
+    await withPublicHistory(sdk,{}).runTransaction({},tx=>tx.set({path:'events/'+kind},{kind}));
+  }
+  assert.equal(writes.length,9);
+  assert.ok(writes.every(w=>w.ref.path.startsWith('events/')));
+});

@@ -36,7 +36,7 @@ const duplicates = setupDuplicates({element,getPlayers:() => players,getReviews:
 const management = setupPlayerManagement({element,isAdmin:() => demo || profile?.role === 'admin',getPlayers:() => players,mutate,toast,teamName});
 const teamManagement = setupTeamManagement({element,isAdmin:() => demo || profile?.role === 'admin',getTeams:() => teamCatalog,getPlayers:() => players,getUsers:() => accessUsers,mutate,toast});
 const roster = setupRoster({element,getPlayers:() => players,getTeams:() => teamCatalog,canExport:() => playersReady && teamsReady && (demo || ['admin','director'].includes(profile?.role)),toast});
-const history = setupHistory({element,getLogs:() => logs,getTeams:() => teamCatalog,getPlayers:() => [...players,...archivedPlayers],getUsers:() => accessUsers,showAuthors:member,canRead:() => true,canLoadMore:() => historyHasMore,isLoading:() => historyLoading,loadMore:() => historyLoader?.()});
+const history = setupHistory({element,getLogs:() => logs,getTeams:() => teamCatalog,getPlayers:() => [...players,...archivedPlayers],getUsers:() => accessUsers,showAuthors:member,isAdmin:() => demo || profile?.role === 'admin',canRead:() => true,canLoadMore:() => historyHasMore,isLoading:() => historyLoading,loadMore:() => historyLoader?.()});
 const gameDay = setupGameDay({element,getProfile:() => demo ? {role:'admin'} : profile,getUserId:() => user?.uid,getPlayers:() => players,getTeams:() => teamCatalog,mutate,toast,demo});
 setupCongregations({element,getPlayers:() => [...players,...archivedPlayers]});
 const statusFilter = element('select'); statusFilter.id = 'status-filter'; statusFilter.setAttribute('aria-label','Filtrar situação do jogador');
@@ -314,7 +314,7 @@ if (demo) {
         let stop = null, request = 0;
         function load() {
           const revision = ++request; stop?.(); historyLoading = true;
-          stop = dbSDK.onSnapshot(dbSDK.query(dbSDK.collection(db,'publicEvents'),dbSDK.orderBy('at','desc'),dbSDK.limit(historyLimit)),s => {
+          stop = dbSDK.onSnapshot(dbSDK.query(dbSDK.collection(db,'publicEvents'),dbSDK.where('kind','in',['add','transfer']),dbSDK.orderBy('at','desc'),dbSDK.limit(historyLimit)),s => {
             if (version !== authVersion || member() || revision !== request) return;
             logs = s.docs.map(d => ({...d.data(),id:d.id,detail:publicMovementDetail(d.data(),teamCatalog)}));
             historyHasMore = s.docs.length === historyLimit; historyLoading = false; renderHistory();
@@ -347,7 +347,7 @@ if (demo) {
           function subscribeHistory() {
             const requestVersion = ++historyVersion;
             stopHistory?.(); historyLoading = true; renderHistory();
-            stopHistory = dbSDK.onSnapshot(dbSDK.query(dbSDK.collection(db,'events'),dbSDK.orderBy('at','desc'),dbSDK.limit(historyLimit)),active(s => {
+            stopHistory = dbSDK.onSnapshot(dbSDK.query(dbSDK.collection(db,'events'),...(profile.role === 'admin' ? [] : [dbSDK.where('kind','in',['add','transfer'])]),dbSDK.orderBy('at','desc'),dbSDK.limit(historyLimit)),active(s => {
               if (requestVersion !== historyVersion) return;
               logs = s.docs.map(d => ({...d.data(),id:d.id})); historyHasMore = s.docs.length === historyLimit; historyLoading = false; renderHistory();
             }),e => { if (requestVersion !== historyVersion) return; historyLoading = false; renderHistory(); error(e); });

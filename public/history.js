@@ -1,4 +1,5 @@
 import {identity} from './domain.js';
+import {PUBLIC_MOVEMENT_KINDS} from './public-history.js';
 export const HISTORY_ACTIONS = {add:'Inscrição',transfer:'Transferência',edit:'Edição de jogador',status:'Situação do jogador',merge:'Unificação de cadastros',duplicateReview:'Revisão de duplicidade',team:'Gerenciamento de time',window:'Janela de transferências',gameWeek:'Programação do jogo',gameSquad:'Escalação da semana',legacy:'Registro antigo'};
 const clean = text => identity(String(text || ''),'').slice(0,-1);
 export function eventTime(event) {
@@ -42,7 +43,10 @@ export function eventAuthor(event,users = []) {
   const account = users.find(user => user.id === event.actor);
   return event.actorName || account?.displayName || account?.email || (event.actor ? 'Diretor não identificado neste registro antigo' : 'Responsável não registrado');
 }
-export function setupHistory({element,getLogs,getTeams,getPlayers,getUsers = () => [],showAuthors = () => true,loadMore,canLoadMore,isLoading,canRead}) {
+export function visibleHistory(logs,isAdmin) {
+  return isAdmin ? logs : logs.filter(event => PUBLIC_MOVEMENT_KINDS.includes(event.kind));
+}
+export function setupHistory({element,getLogs,getTeams,getPlayers,getUsers = () => [],showAuthors = () => true,isAdmin = () => false,loadMore,canLoadMore,isLoading,canRead}) {
   const list = document.querySelector('#history-list'), section = list.closest('section');
   const controls = element('form',null,'history-filters'); controls.setAttribute('aria-label','Filtros de movimentações');
   const inputs = {};
@@ -53,8 +57,6 @@ export function setupHistory({element,getLogs,getTeams,getPlayers,getUsers = () 
     inputs[key] = input; field.append(input); controls.append(field);
     input.addEventListener(type === 'search' ? 'input' : 'change',render);
   }
-  const any = element('option','Todas as ações'); any.value = ''; inputs.action.append(any);
-  for (const [value,label] of Object.entries(HISTORY_ACTIONS)) { const option = element('option',label); option.value = value; inputs.action.append(option); }
   const clear = element('button','Limpar filtros','row-action'); clear.type = 'reset'; controls.append(clear);
   controls.onsubmit = event => event.preventDefault(); controls.onreset = () => queueMicrotask(render);
   const feedback = element('p'); feedback.setAttribute('role','status');
@@ -63,16 +65,25 @@ export function setupHistory({element,getLogs,getTeams,getPlayers,getUsers = () 
   const more = element('button','Carregar mais movimentações','row-action'); section.append(more);
   more.onclick = () => loadMore();
   function render() {
+    const logs = visibleHistory(getLogs(),isAdmin());
+    const action = inputs.action.value; inputs.action.replaceChildren();
+    const any = element('option','Todas as ações'); any.value = ''; inputs.action.append(any);
+    for (const [value,label] of Object.entries(HISTORY_ACTIONS)) {
+      if (!isAdmin() && !PUBLIC_MOVEMENT_KINDS.includes(value)) continue;
+      const option = element('option',label); option.value = value; inputs.action.append(option);
+    }
+    inputs.action.value = action && (isAdmin() || PUBLIC_MOVEMENT_KINDS.includes(action)) ? action : '';
+    help.hidden = !isAdmin();
     const selected = inputs.team.value; inputs.team.replaceChildren();
     const all = element('option','Todos os times'); all.value = ''; inputs.team.append(all);
     const teamEntries = new Map(Object.entries(getTeams()).map(([id,t]) => [id,t.name + (t.status === 'active' ? '' : ' · inativo/excluído')]));
-    for (const event of getLogs()) for (const id of eventTeamIds(event,getPlayers())) if (!teamEntries.has(id)) teamEntries.set(id,id);
+    for (const event of logs) for (const id of eventTeamIds(event,getPlayers())) if (!teamEntries.has(id)) teamEntries.set(id,id);
     for (const [id,name] of teamEntries) { const option = element('option',name); option.value = id; inputs.team.append(option); }
     if (teamEntries.has(selected)) inputs.team.value = selected;
     const filters = Object.fromEntries(Object.entries(inputs).map(([key,input]) => [key,input.value]));
     feedback.className = ''; list.replaceChildren();
     let matches = [];
-    try { matches = filterHistory(getLogs(),filters,getPlayers(),getTeams()); feedback.textContent = `${matches.length} de ${getLogs().length} movimentações carregadas${canLoadMore() ? ' · há registros mais antigos' : ''}.`; }
+    try { matches = filterHistory(logs,filters,getPlayers(),getTeams()); feedback.textContent = `${matches.length} de ${logs.length} movimentações carregadas${canLoadMore() ? ' · há registros mais antigos' : ''}.`; }
     catch(e) { feedback.textContent = e.message; feedback.className = 'form-error'; }
     for (const event of matches) {
       const item = element('div',null,'history-item'), time = eventTime(event);

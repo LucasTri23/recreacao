@@ -331,7 +331,7 @@ service cloud.firestore {
       allow delete: if false;
     }
     match /publicEvents/{id} {
-      allow read: if true;
+      allow read: if resource.data.kind in ['add','transfer'];
       allow create, update: if member()
         && request.resource.data.keys().hasAll(['kind','name','at','from','to','teams'])
         && request.resource.data.keys().hasOnly(['kind','name','at','from','to','teams'])
@@ -344,7 +344,7 @@ service cloud.firestore {
       allow delete: if false;
     }
     match /events/{id} {
-      allow read: if member();
+      allow read: if admin() || (member() && resource.data.kind in ['add','transfer']);
       allow create: if member() && request.resource.data.actor == request.auth.uid
         && (!('actorName' in request.resource.data) || request.resource.data.actorName == profile().get('displayName',profile().get('email','Diretor')))
         && request.resource.data.at == request.time && (
