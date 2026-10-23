@@ -2,8 +2,11 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {CITIES,splitCongregation,cityCongregation,normalizeRepeatedCity} from '../public/cities.js';
 import {playerDetails,playerId} from '../public/domain.js';
-test('lista fechada contém os 35 municípios e separa cidades antigas sem adivinhar', () => {
-  assert.equal(CITIES.length,35); assert.equal(new Set(CITIES).size,35);
+test('lista fechada contém as 37 localidades e separa cidades antigas sem adivinhar', () => {
+  assert.equal(CITIES.length,37); assert.equal(new Set(CITIES).size,37);
+  for (const city of ['Serra do Cipó','Santana do Riacho']) {
+    assert.deepEqual(cityCongregation('Centro',city),{congregation:`CENTRO - ${city.toLocaleUpperCase('pt-BR')}`,city});
+  }
   assert.deepEqual(cityCongregation('Centro','Sete Lagoas'),{congregation:'CENTRO - SETE LAGOAS',city:'Sete Lagoas'});
   assert.deepEqual(splitCongregation('VERA CRUZ DE MINAS - PEDRO LEOPOLDO'),{congregation:'VERA CRUZ DE MINAS',city:'Pedro Leopoldo'});
   assert.deepEqual(splitCongregation('Santa Clara – Vespasiano'),{congregation:'Santa Clara',city:'Vespasiano'});
