@@ -59,7 +59,7 @@ export function similarity(a, b) {
 export function playerSuggestions(players, name, congregation = '') {
   const query = normalizedName(name);
   if (query.length < 3) return [];
-  return players.filter(p => !p.mergedInto).map(player => {
+  return players.filter(isActivePlayer).map(player => {
     const candidate = normalizedName(player.name);
     const score = candidate.includes(query) ? Math.max(.85, similarity(name,player.name)) : similarity(name,player.name);
     return {player,score,sameCongregation:!!congregation && normalizedName(congregation) === normalizedName(player.congregation)};

@@ -10,6 +10,9 @@ test('nome e congregação ignoram acentos, caixa e espaços', async () => {
 
 test('busca sugere nomes parciais, acentos e pequenos erros, mostrando cadastros ativos', () => {
   const players = [{id:'a',name:'João da Silva',congregation:'Centro',teams:['VERDE']},{id:'b',name:'Maria Souza',congregation:'Centro',teams:['BRANCO']},{id:'c',name:'Joao Silva',congregation:'Centro',teams:[],mergedInto:'a'}];
+  players.push(...['inactive','deleted'].map(status => ({id:status,name:'João da Silva',congregation:'Centro',teams:['VERDE'],status})));
+  assert.deepEqual(playerSuggestions(players,'João da Silva').map(({player}) => player.id),['a']);
+  assert.deepEqual(playerSuggestions(players.filter(p => p.id !== 'a'),'João da Silva'),[]);
   for (const query of ['joa','JOÃO DA SILVA','Joao da SIlva','Joao da Sliva','Joao Silva']) assert.equal(playerSuggestions(players,query)[0].player.id,'a');
   assert.deepEqual(playerSuggestions(players,'xx'),[]);
   assert.deepEqual(playerSuggestions(players,'Pedro Oliveira'),[]);
