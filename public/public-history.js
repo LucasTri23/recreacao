@@ -1,3 +1,4 @@
+import {publicTeamPlayer} from './public-team-roster.js';
 export function publicMovement(event) {
   return {kind:event.kind || 'legacy',name:event.name || '',at:event.at,from:event.from || '',to:event.to || '',teams:event.teams || []};
 }
@@ -13,6 +14,7 @@ export function withPublicHistory(sdk,db) {
       if (key === 'set') return (ref,data,...args) => {
         target.set(ref,data,...args);
         if (/^events\/[^/]+$/.test(ref.path)) target.set(sdk.doc(db,'publicEvents',ref.id || ref.path.split('/')[1]),publicMovement(data));
+        if (/^players\/[^/]+$/.test(ref.path)) target.set(sdk.doc(db,'publicTeamPlayers',ref.id || ref.path.split('/')[1]),publicTeamPlayer(data));
         return target;
       };
       const value = target[key]; return typeof value === 'function' ? value.bind(target) : value;

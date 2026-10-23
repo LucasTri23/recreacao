@@ -7,6 +7,7 @@ auth.setActiveAccount({},auth.getGlobalDefaultAccount());
 const path = suffix => '/databases/(default)/documents/'+suffix;
 const event = {kind:'add',name:'JOGADOR TESTE',at:1000,from:'',to:'VERDE',teams:[]};
 const mocks = [
+  {function:'getAfter',args:[{exactValue:path('players/p')}],result:{value:{data:{name:'JOGADOR TESTE',teams:['VERDE']}}}},
   {function:'get',args:[{exactValue:path('users/director')}],result:{value:{data:{role:'director',team:'VERDE'}}}},
   {function:'getAfter',args:[{exactValue:path('events/e')}],result:{value:{data:{...event,actor:'director',detail:'Texto privado'}}}}
 ];
@@ -15,6 +16,11 @@ function add(label,suffix,method,expectation,data,authenticated = false) {
   labels.push(label); cases.push({expectation,request:{path:path(suffix),method,...(authenticated ? {auth:{uid:'director'}} : {}),...(method === 'get' ? {} : {resource:{data}})},...(method === 'get' ? {resource:{data:data || {}}} : {}),functionMocks:mocks});
 }
 add('visitante consulta times','settings/teams','get','ALLOW',{items:{}});
+add('visitante vê nomes e vínculos públicos','publicTeamPlayers/p','get','ALLOW',{name:'JOGADOR TESTE',teams:['VERDE'],active:true});
+add('visitante não altera elenco','publicTeamPlayers/p','update','DENY',{name:'FORJADO',teams:[],active:true});
+add('diretor publica nome e time corretos','publicTeamPlayers/p','create','ALLOW',{name:'JOGADOR TESTE',teams:['VERDE'],active:true},true);
+add('projeção não aceita congregação','publicTeamPlayers/p','create','DENY',{name:'JOGADOR TESTE',teams:['VERDE'],active:true,congregation:'PRIVADO'},true);
+add('projeção não aceita vínculo inventado','publicTeamPlayers/p','create','DENY',{name:'JOGADOR TESTE',teams:['BRANCO'],active:true},true);
 add('visitante consulta resumo','publicEvents/e','get','ALLOW',event);
 add('visitante não lê histórico privado','events/e','get','DENY',event);
 add('visitante não lê jogadores','players/id','get','DENY',{name:'PRIVADO'});

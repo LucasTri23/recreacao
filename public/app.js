@@ -4,6 +4,7 @@ import { setupDuplicates } from './duplicates.js';
 import { setupPages, PUBLIC_PAGES } from './pages.js';
 import {withPublicHistory,publicMovementDetail} from './public-history.js';
 import {setupPresentation} from './presentation.js';
+import {setupPublicTeams} from './public-team-roster.js';
 import { setupPlayerManagement } from './player-management.js';
 import { DEFAULT_TEAMS,TEAM_COLORS,changeTeam,teamActive } from './teams.js';
 import { setupTeamManagement } from './team-management.js';
@@ -29,6 +30,8 @@ let reviews = [], playersReady = demo, teamsReady = demo;
 let historyLimit = 100, historyHasMore = false, historyLoading = false, historyLoader = null;
 let accessUsers = [];
 let archivedPlayers = [];
+let publicTeamPlayers = [];
+const publicTeams = setupPublicTeams({element,getPlayers:() => publicTeamPlayers,teamName});
 const duplicates = setupDuplicates({element,getPlayers:() => players,getReviews:() => reviews,isAdmin:() => demo || profile?.role === 'admin',openAdd,mutate,toast,teamName});
 const management = setupPlayerManagement({element,isAdmin:() => demo || profile?.role === 'admin',getPlayers:() => players,mutate,toast,teamName});
 const teamManagement = setupTeamManagement({element,isAdmin:() => demo || profile?.role === 'admin',getTeams:() => teamCatalog,getPlayers:() => players,getUsers:() => accessUsers,mutate,toast});
@@ -93,10 +96,12 @@ function element(tag, text, className) { const e = document.createElement(tag); 
 function allowed(team) { return demo || profile?.role === 'admin' || (profile?.role === 'director' && profile.team === team); }
 function options(select, teams) { select.replaceChildren(...teams.map(t => { const e = element('option', teamName(t)); e.value = t; return e; })); }
 function render() {
+  if (member()) publicTeams.close();
+  publicTeams.refresh();
   navigation?.refresh();
   for (const id of ['#add-player','#players-add','#empty-add']) $(id).hidden = !member();
   gameDay.refresh();
-  $('#player-count').textContent = member() ? players.filter(isActivePlayer).length : '—';
+  $('#player-count').textContent = member() ? players.filter(isActivePlayer).length : publicTeamPlayers.filter(p => p.active).length;
   statusFilter.hidden = !(demo || profile?.role === 'admin');
   if (statusFilter.hidden) statusFilter.value = 'active';
   management.refresh();
@@ -113,16 +118,15 @@ function render() {
   if (profile?.role !== 'admin') renderAccess();
   $('#login').textContent = demo ? 'Modo demonstração' : user ? `${profile?.role === 'admin' ? 'Administração' : teamName(profile?.team) || 'Sem acesso atribuído'} · Sair` : 'Entrar como diretor ↗';
   $('#team-grid').replaceChildren(...teamIds(true).map(team => {
-    const count = players.filter(p => isActivePlayer(p) && p.teams.includes(team)).length;
-    const card = element(member() ? 'button' : 'article', null, 'team-card'); card.style.cssText = style(team);
+    const count = member() ? players.filter(p => isActivePlayer(p) && p.teams.includes(team)).length : publicTeamPlayers.filter(p => p.active && p.teams.includes(team)).length;
+    const card = element('button', null, 'team-card'); card.style.cssText = style(team);
     const badge = element('span', teamCatalog[team].badge, 'team-badge'); badge.setAttribute('aria-hidden','true');
     const top = element('div', null, 'team-top'); top.append(badge, element('span', '⋯'));
     const p = element('p'); p.append(element('b', String(count)), document.createTextNode(` ${count === 1 ? 'jogador' : 'jogadores'}`));
-    if (!member()) p.textContent = 'Time registrado';
     const bottom = element('div', null, 'team-bottom'); bottom.append(element('span', 'Consultar registros'), element('span', '↗'));
-    if (!member()) bottom.replaceChildren(element('span','Registro ativo'));
+    if (!member()) bottom.replaceChildren(element('span','Ver jogadores'),element('span','↗'));
     card.append(top, element('h3', teamName(team)), p, bottom);
-    if (member()) card.onclick = () => { $('#team-filter').value = team; statusFilter.value = 'active'; $('#search').value = ''; filter = 'all'; document.querySelectorAll('[data-filter]').forEach(b => b.classList.toggle('selected',b.dataset.filter === 'all')); renderPlayers(); location.hash = '/jogadores'; }; return card;
+    card.onclick = member() ? () => { $('#team-filter').value = team; statusFilter.value = 'active'; $('#search').value = ''; filter = 'all'; document.querySelectorAll('[data-filter]').forEach(b => b.classList.toggle('selected',b.dataset.filter === 'all')); renderPlayers(); location.hash = '/jogadores'; } : () => publicTeams.open(team); return card;
   }));
   if (!teamIds(true).length) $('#team-grid').append(element('p','Nenhum time ativo. A administração pode criar ou reativar times em Gerenciar times.'));
   $('#congregations').replaceChildren(...congregationOptions([...players,...archivedPlayers]).map(c => { const o = element('option'); o.value = c; return o; }));
@@ -299,6 +303,10 @@ if (demo) {
       user = current; profile = null; players = []; archivedPlayers = []; logs = []; accessUsers = []; reviews = []; playersReady = false; teamsReady = false; historyLimit = 100; historyHasMore = false; historyLoading = false; historyLoader = null; windowOpen = false; teamCatalog = structuredClone(DEFAULT_TEAMS); render();
       const publicError = e => toast('Não foi possível carregar a consulta pública: '+e.message);
       function subscribePublic() {
+        dataSubscriptions.push(dbSDK.onSnapshot(dbSDK.collection(db,'publicTeamPlayers'),s => {
+          if (version !== authVersion || member()) return;
+          publicTeamPlayers = s.docs.map(d => ({...d.data(),id:d.id})); render();
+        },publicError));
         dataSubscriptions.push(dbSDK.onSnapshot(dbSDK.doc(db,'settings','teams'),s => {
           if (version !== authVersion || member()) return;
           teamCatalog = s.data()?.items || structuredClone(DEFAULT_TEAMS); teamsReady = true; render();

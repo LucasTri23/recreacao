@@ -14,7 +14,8 @@ test('resumo é salvo na mesma transação do histórico, sem alterar outras esc
     tx.set({path:'events/one',id:'one'},{name:'JOÃO',kind:'add',to:'VERDE',at:1,actor:'private'});
     tx.set({path:'players/p'},{name:'JOÃO'});
   });
-  assert.equal(writes.length,3);
+  assert.equal(writes.length,4);
   assert.equal(writes[1].ref.path,'publicEvents/one');
   assert.equal(writes[1].data.actor,undefined);
+  assert.equal(writes[3].ref.path,'publicTeamPlayers/p');
 });
