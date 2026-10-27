@@ -8,6 +8,34 @@ service cloud.firestore {
     function defaultTeams() { return {"BRANCO":{"name":"BRANCO","color":"white","badge":"⚪","status":"active"},"PRETO":{"name":"PRETO","color":"black","badge":"⚫","status":"active"},"BLUES":{"name":"BLUES","color":"blue","badge":"🔵","status":"active"},"COIOTES":{"name":"COIOTES","color":"brown","badge":"C","status":"active"},"VETOR NORTE":{"name":"VETOR NORTE","color":"olive","badge":"↑","status":"active"},"AMARELO":{"name":"AMARELO","color":"yellow","badge":"🟡","status":"active"},"LARANJA":{"name":"LARANJA","color":"orange","badge":"🟠","status":"active"},"VERDE":{"name":"VERDE","color":"green","badge":"🟢","status":"active"}}; }
     function teamCatalog() { return exists(/databases/$(database)/documents/settings/teams) ? get(/databases/$(database)/documents/settings/teams).data.items : defaultTeams(); }
     function teamActive(id) { let items = teamCatalog(); return id in items && items[id].status == 'active'; }
+    function validTacticalSlot(s) {
+      return s is map && s.keys().hasOnly(['playerId','x','y'])
+        && s.playerId is string && s.playerId.size() <= 128
+        && s.x is number && s.x >= 8 && s.x <= 92
+        && s.y is number && s.y >= 8 && s.y <= 92;
+    }
+    function validTacticalLineup(d,teamId) {
+      let slots = d.slots;
+      let size = slots.size();
+      return d.keys().hasOnly(['teamId','formation','slots','updatedAt','updatedBy'])
+        && d.teamId == teamId && d.updatedBy == request.auth.uid && d.updatedAt == request.time
+        && slots is list
+        && ((d.formation in ['4-4-2','4-3-3','3-5-2'] && size == 11)
+          || (d.formation == '2-3-1' && size == 7)
+          || (d.formation == '2-2-1' && size == 6)
+          || (d.formation == '2-2' && size == 5))
+        && validTacticalSlot(slots[0]) && validTacticalSlot(slots[1])
+        && validTacticalSlot(slots[2]) && validTacticalSlot(slots[3]) && validTacticalSlot(slots[4])
+        && (size < 6 || validTacticalSlot(slots[5]))
+        && (size < 7 || validTacticalSlot(slots[6]))
+        && (size < 11 || (validTacticalSlot(slots[7]) && validTacticalSlot(slots[8])
+          && validTacticalSlot(slots[9]) && validTacticalSlot(slots[10])));
+    }
+    match /tacticalLineups/{teamId} {
+      allow read: if admin();
+      allow create, update: if admin() && teamActive(teamId) && validTacticalLineup(request.resource.data,teamId);
+      allow delete: if admin();
+    }
     function active(p) { return !('mergedInto' in p) && p.get('status','active') == 'active'; }
     function playerAction(p) { return getAfter(/databases/$(database)/documents/events/$(p.lastEvent)).data.kind; }
     function normalized(s) {

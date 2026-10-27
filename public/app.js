@@ -15,6 +15,7 @@ import {goalkeeperToggle} from './goalkeeper-toggle.js';
 import {citySelect,splitCongregation,cityCongregation} from './cities.js';
 import {setupNotifications} from './notifications.js';
 import {setupGameDay} from './game-day-ui.js';
+import {setupTactics} from './tactics-ui.js';
 const $ = s => document.querySelector(s);
 const toast = setupNotifications(document);
 const mobileActions = window.matchMedia('(max-width:700px)');
@@ -38,6 +39,7 @@ const teamManagement = setupTeamManagement({element,isAdmin:() => demo || profil
 const roster = setupRoster({element,getPlayers:() => players,getTeams:() => teamCatalog,canExport:() => playersReady && teamsReady && (demo || ['admin','director'].includes(profile?.role)),toast});
 const history = setupHistory({element,getLogs:() => logs,getTeams:() => teamCatalog,getPlayers:() => [...players,...archivedPlayers],getUsers:() => accessUsers,showAuthors:member,isAdmin:() => demo || profile?.role === 'admin',canRead:() => true,canLoadMore:() => historyHasMore,isLoading:() => historyLoading,loadMore:() => historyLoader?.()});
 const gameDay = setupGameDay({element,getProfile:() => demo ? {role:'admin'} : profile,getUserId:() => user?.uid,getPlayers:() => players,getTeams:() => teamCatalog,mutate,toast,demo});
+const tactics = setupTactics({element,isAdmin:() => demo || profile?.role === 'admin',getUserId:() => user?.uid,getPlayers:() => players,getTeams:() => teamCatalog,isReady:() => playersReady && teamsReady,toast,demo});
 setupCongregations({element,getPlayers:() => [...players,...archivedPlayers]});
 const statusFilter = element('select'); statusFilter.id = 'status-filter'; statusFilter.setAttribute('aria-label','Filtrar situação do jogador');
 for (const [value,label] of [['active','Ativos'],['inactive','Inativos'],['deleted','Excluídos'],['all','Todas as situações']]) { const option = element('option',label); option.value = value; statusFilter.append(option); }
@@ -101,6 +103,7 @@ function render() {
   navigation?.refresh();
   for (const id of ['#add-player','#players-add','#empty-add']) $(id).hidden = !member();
   gameDay.refresh();
+  tactics.refresh();
   $('#player-count').textContent = member() ? players.filter(isActivePlayer).length : publicTeamPlayers.filter(p => p.active).length;
   statusFilter.hidden = !(demo || profile?.role === 'admin');
   if (statusFilter.hidden) statusFilter.value = 'active';
@@ -278,7 +281,7 @@ function renderHistory() {
   history.refresh();
 }
 setupPresentation();
-navigation = setupPages(() => { duplicates.refresh(); teamManagement.refresh(); gameDay.refresh(); renderAccess(); renderHistory(); },page => member() || PUBLIC_PAGES.includes(page));
+navigation = setupPages(() => { duplicates.refresh(); teamManagement.refresh(); gameDay.refresh(); tactics.refresh(); renderAccess(); renderHistory(); },page => page === 'campinho' ? demo || profile?.role === 'admin' : member() || PUBLIC_PAGES.includes(page));
 if (demo) {
   try { const stored = JSON.parse(localStorage.getItem('recreacao-demo-v1')); if (stored) { ({ players, logs, windowOpen } = stored); archivedPlayers = stored.archivedPlayers || []; teamCatalog = stored.teamCatalog || structuredClone(DEFAULT_TEAMS); reviews = stored.reviews || []; } } catch { localStorage.removeItem('recreacao-demo-v1'); }
   $('#mode-notice').textContent = 'Demonstração local · Experimente os cadastros e transferências. Os dados ficam apenas neste navegador até conectar o Firebase.';
@@ -294,6 +297,7 @@ if (demo) {
     const writingSDK = withPublicHistory(dbSDK,db);
     api = createFirebaseApi(writingSDK, db, auth,() => congregationOptions([...players,...archivedPlayers]));
     gameDay.connect(writingSDK,db);
+    tactics.connect(writingSDK,db);
     $('#login').onclick = async () => { try { if (auth.currentUser) await authSDK.signOut(auth); else await authSDK.signInWithPopup(auth, new authSDK.GoogleAuthProvider()); } catch(e) { toast(e.message); } };
     let unsubscribers = [], dataSubscriptions = [], authVersion = 0;
     authSDK.onAuthStateChanged(auth, async current => {

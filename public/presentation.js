@@ -7,7 +7,7 @@ const icons = {
 export function setupPresentation() {
   const sidebar = document.querySelector('.sidebar'), nav = sidebar.querySelector('nav');
   sidebar.append(document.querySelector('.header-actions'));
-  const labels = {times:'Times',jogadores:'Jogadores','dia-de-jogo':'Dia de jogo',movimentacoes:'Movimentações',duplicidades:'Duplicidades','gerenciar-rodada':'Jogos da semana','gerenciar-acessos':'Acessos','gerenciar-times':'Gestão de times'};
+  const labels = {times:'Times',jogadores:'Jogadores','dia-de-jogo':'Dia de jogo',movimentacoes:'Movimentações',duplicidades:'Duplicidades',campinho:'Campinho','gerenciar-rodada':'Jogos da semana','gerenciar-acessos':'Acessos','gerenciar-times':'Gestão de times'};
   for (const [page,label] of Object.entries(labels)) {
     const link = nav.querySelector(`[data-nav="${page}"]`);
     if (link) { link.textContent = label; nav.append(link); }
