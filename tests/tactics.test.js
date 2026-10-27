@@ -5,11 +5,18 @@ import {FORMATIONS,formationSlots,tacticalRoster,cleanLineup,placePlayer} from '
 test('formações incluem goleiro e mantêm posições dentro do campo',() => {
   for (const [id,preset] of Object.entries(FORMATIONS)) {
     const slots = formationSlots(id);
+    if (id === 'custom') {assert.deepEqual(slots,[]); continue;}
     assert.equal(slots.length,1+preset.lines.reduce((a,b) => a+b,0));
     assert.equal(slots[0].y,89);
     assert.ok(slots.every(s => s.x >= 8 && s.x <= 92 && s.y >= 8 && s.y <= 92));
   }
   assert.throws(() => formationSlots('invalid'),/formação/);
+});
+test('formação personalizada preserva quantidade, funções e coordenadas ao salvar e carregar',() => {
+  for (const count of [0,1,4,8,9,10,11]) {
+    const slots = Array.from({length:count},(_,i) => ({playerId:'',x:10+i*6,y:30,role:i ? 'VOL' : 'GOL'}));
+    assert.deepEqual(cleanLineup({formation:'custom',slots},[]),{formation:'custom',slots});
+  }
 });
 test('banco e montagem excluem inativos, excluídos, unificados e jogadores de outro time',() => {
   const players = [

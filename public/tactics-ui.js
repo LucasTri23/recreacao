@@ -1,4 +1,4 @@
-import {FORMATIONS,formationSlots,tacticalRoster,cleanLineup,placePlayer} from './tactics.js';
+import {FORMATIONS,POSITION_ROLES,MAX_POSITIONS,formationSlots,tacticalRoster,cleanLineup,placePlayer} from './tactics.js';
 import {playerName} from './domain.js';
 
 export function setupTactics({element,isAdmin,getUserId,getPlayers,getTeams,isReady,toast,demo}) {
@@ -16,6 +16,12 @@ export function setupTactics({element,isAdmin,getUserId,getPlayers,getTeams,isRe
   for (const [id,preset] of Object.entries(FORMATIONS)) { const option = element('option',preset.label); option.value = id; formation.append(option); }
   const save = element('button','Salvar montagem','primary'), reset = element('button','Voltar às posições da formação','row-action'), clear = element('button','Devolver todos ao banco','row-action');
   for (const button of [save,reset,clear]) {button.type = 'button'; toolbar.append(button);}
+  const positionTools = element('div',null,'tactics-toolbar tactics-position-tools');
+  const addPosition = element('button','＋ Adicionar posição','row-action'), removePosition = element('button','Remover posição selecionada','row-action'), blank = element('button','Começar formação do zero','row-action');
+  for (const button of [addPosition,removePosition,blank]) {button.type = 'button'; positionTools.append(button);}
+  const roleLabel = element('label','Função da posição selecionada'), role = element('select'); role.setAttribute('aria-label','Função da posição selecionada');
+  for (const [id,name] of Object.entries(POSITION_ROLES)) {const option = element('option',`${id} · ${name}`); option.value = id; role.append(option);}
+  roleLabel.append(role); positionTools.append(roleLabel);
   const message = element('p',null,'tactics-feedback'); message.setAttribute('role','status');
   const instruction = element('p','Toque em um jogador do banco e depois em uma posição vazia. Para reposicionar, selecione um jogador no campo e toque em outro ponto, ou arraste.','tactics-instruction');
   const layout = element('div',null,'tactics-layout'), fieldPanel = element('div',null,'tactics-field-panel'), field = element('div',null,'tactics-pitch');
@@ -26,8 +32,8 @@ export function setupTactics({element,isAdmin,getUserId,getPlayers,getTeams,isRe
   fieldPanel.append(count,field,returnPlayer);
   const bench = element('aside',null,'tactics-bench'), searchLabel = element('label','Buscar no banco'), search = element('input'); search.type = 'search'; search.placeholder = 'Nome do jogador'; searchLabel.append(search);
   const benchTitle = element('h3','Banco'), benchList = element('div',null,'tactics-bench-list'); bench.append(benchTitle,searchLabel,benchList);
-  layout.append(fieldPanel,bench); workspace.append(toolbar,message,instruction,layout);
-  let sdk,db,unsubscribe,session='',loaded=demo,busy=false,selected='',generation=0;
+  layout.append(fieldPanel,bench); workspace.append(toolbar,positionTools,message,instruction,layout);
+  let sdk,db,unsubscribe,session='',loaded=demo,busy=false,selected='',selectedSlot=-1,generation=0;
   let saved = new Map(), drafts = new Map();
   if (demo) {try {saved = new Map(Object.entries(JSON.parse(localStorage.getItem('recreacao-tactics-demo') || '{}')));} catch {}}
   const roster = () => tacticalRoster(getPlayers(),team.value);
@@ -40,7 +46,7 @@ export function setupTactics({element,isAdmin,getUserId,getPlayers,getTeams,isRe
   function syncSession() {
     const next = isAdmin() ? (demo ? 'demo' : getUserId() || '') : '';
     if (session === next) return;
-    generation++; unsubscribe?.(); unsubscribe = null; session = next; selected = ''; drafts.clear();
+    generation++; unsubscribe?.(); unsubscribe = null; session = next; selected = ''; selectedSlot = -1; drafts.clear();
     if (!demo) saved.clear(); loaded = demo;
     if (next && sdk && !demo) {
       const current = generation;
@@ -52,28 +58,47 @@ export function setupTactics({element,isAdmin,getUserId,getPlayers,getTeams,isRe
       },error => { if (current === generation) {loaded = false; message.textContent = 'Não foi possível carregar as montagens: '+error.message;} });
     }
   }
-  team.onchange = () => {selected = ''; search.value = ''; renderBoard();};
+  team.onchange = () => {selected = ''; selectedSlot = -1; search.value = ''; renderBoard();};
   search.oninput = () => renderBoard();
   formation.onchange = () => {
+    if (formation.value === 'custom') {change({formation:'custom'}); return;}
     const old = draft(), slots = formationSlots(formation.value);
     old.slots.forEach((slot,index) => {if (slots[index]) slots[index].playerId = slot.playerId;});
-    selected = ''; change({formation:formation.value,slots});
+    selected = ''; selectedSlot = -1; change({formation:formation.value,slots});
   };
+  addPosition.onclick = () => {
+    if (busy || !isAdmin() || draft().slots.length >= MAX_POSITIONS) return;
+    selected = ''; selectedSlot = draft().slots.length;
+    change({formation:'custom',slots:[...draft().slots,{playerId:'',x:20+(selectedSlot%4)*20,y:30+Math.floor(selectedSlot/4)*20,role:'LIVRE'}]});
+  };
+  removePosition.onclick = () => {
+    if (busy || !isAdmin() || selectedSlot < 0) return;
+    const slots = draft().slots.filter((_,index) => index !== selectedSlot); selected = ''; selectedSlot = -1; change({formation:'custom',slots});
+  };
+  blank.onclick = () => {selected = ''; selectedSlot = -1; change({formation:'custom',slots:[]});};
+  role.onchange = () => {if (busy || !isAdmin() || selectedSlot < 0) return; const slots = structuredClone(draft().slots); slots[selectedSlot].role = role.value; change({formation:'custom',slots});};
   reset.onclick = () => change({slots:formationSlots(draft().formation).map((slot,index) => ({...slot,playerId:draft().slots[index]?.playerId || ''}))});
   clear.onclick = () => {selected = ''; change({slots:draft().slots.map(s => ({...s,playerId:''}))});};
   returnPlayer.onclick = () => {if (!selected || busy) return; const id = selected; selected = ''; change({slots:draft().slots.map(s => s.playerId === id ? {...s,playerId:''} : s)});};
   function assign(index) {
     if (!selected || busy || !isAdmin()) return;
-    const next = placePlayer(draft(),selected,index); selected = ''; change(next);
+    const next = placePlayer(draft(),selected,index); selected = ''; selectedSlot = -1; change(next);
   }
   function point(event) { const rect = field.getBoundingClientRect(); return {x:Math.round(Math.min(92,Math.max(8,(event.clientX-rect.left)/rect.width*100))),y:Math.round(Math.min(92,Math.max(8,(event.clientY-rect.top)/rect.height*100)))}; }
   field.onclick = event => {
-    if (event.target.closest('button') || !selected || busy || !isAdmin()) return;
+    if (event.target.closest('button') || busy || !isAdmin()) return;
+    if (selectedSlot >= 0 && !selected) {const slots = structuredClone(draft().slots); Object.assign(slots[selectedSlot],point(event)); change({formation:'custom',slots}); return;}
+    if (!selected) return;
     const lineup = draft(), index = lineup.slots.findIndex(s => s.playerId === selected);
-    if (index >= 0) {const slots = structuredClone(lineup.slots); Object.assign(slots[index],point(event)); change({slots});}
-    else {const empty = lineup.slots.findIndex(s => !s.playerId); if (empty >= 0) {const next = placePlayer(lineup,selected,empty); Object.assign(next.slots[empty],point(event)); selected = ''; change(next);} else toast('O campo está completo. Devolva um jogador ao banco para abrir uma posição.');}
+    if (index >= 0) {const slots = structuredClone(lineup.slots); Object.assign(slots[index],point(event)); change({formation:'custom',slots});}
+    else {
+      const empty = lineup.slots.findIndex(s => !s.playerId), at = point(event);
+      if (empty >= 0) {const next = placePlayer(lineup,selected,empty); Object.assign(next.slots[empty],at); selected = ''; change({...next,formation:'custom'});}
+      else if (lineup.slots.length < MAX_POSITIONS) {const id = selected; selected = ''; change({formation:'custom',slots:[...lineup.slots,{playerId:id,...at,role:'LIVRE'}]});}
+      else toast('O campo está completo. Devolva um jogador ao banco para abrir uma posição.');
+    }
   };
-  function attachDrag(button,id) {
+  function attachDrag(button,id,slotIndex = null) {
     button.onpointerdown = event => {
       if (busy || !isAdmin() || (event.button != null && event.button !== 0)) return;
       const initial = {x:event.clientX,y:event.clientY}; let moved = false, ghost;
@@ -81,35 +106,44 @@ export function setupTactics({element,isAdmin,getUserId,getPlayers,getTeams,isRe
       button.onpointermove = move => {
         if (Math.hypot(move.clientX-initial.x,move.clientY-initial.y) < 8 && !moved) return;
         moved = true; button.classList.add('dragging');
-        if (!ghost) {ghost = element('div',playerName(roster().find(p => p.id === id)?.name || ''),'tactics-drag-ghost'); ghost.setAttribute('aria-hidden','true'); document.body.append(ghost);}
+        if (!ghost) {ghost = element('div',playerName(roster().find(p => p.id === id)?.name || (slotIndex == null ? '' : draft().slots[slotIndex]?.role || 'POSIÇÃO LIVRE')),'tactics-drag-ghost'); ghost.setAttribute('aria-hidden','true'); document.body.append(ghost);}
         ghost.style.left = move.clientX+'px'; ghost.style.top = move.clientY+'px';
+        if (slotIndex != null) {const at = point(move); button.style.left = at.x+'%'; button.style.top = at.y+'%';}
       };
       const cleanup = () => {ghost?.remove(); button.onpointermove = null; button.onpointerup = null; button.onpointercancel = null; button.classList.remove('dragging');};
-      button.onpointercancel = cleanup;
+      button.onpointercancel = () => {cleanup(); renderBoard();};
       button.onpointerup = up => {
         cleanup(); if (!moved || busy || !isAdmin()) return;
         button.onclick = event => event.stopPropagation();
         const rect = field.getBoundingClientRect();
         if (up.clientX < rect.left || up.clientX > rect.right || up.clientY < rect.top || up.clientY > rect.bottom) {renderBoard(); return;}
         const lineup = draft(), at = point(up), occupied = lineup.slots.findIndex(s => s.playerId === id);
+        if (slotIndex != null) {const slots = structuredClone(lineup.slots); Object.assign(slots[slotIndex],at); selected = ''; selectedSlot = slotIndex; change({formation:'custom',slots}); return;}
         let index = occupied;
         if (index < 0) index = lineup.slots.reduce((best,s,i) => s.playerId ? best : best < 0 || Math.hypot(s.x-at.x,s.y-at.y) < Math.hypot(lineup.slots[best].x-at.x,lineup.slots[best].y-at.y) ? i : best,-1);
+        if (index < 0 && lineup.slots.length < MAX_POSITIONS) {selected = ''; selectedSlot = lineup.slots.length; change({formation:'custom',slots:[...lineup.slots,{playerId:id,...at,role:'LIVRE'}]}); return;}
         if (index < 0) {toast('O campo está completo. Devolva um jogador ao banco primeiro.'); renderBoard(); return;}
-        const next = placePlayer(lineup,id,index); Object.assign(next.slots[index],at); selected = ''; change(next);
+        const next = placePlayer(lineup,id,index); Object.assign(next.slots[index],at); selected = ''; change({...next,formation:'custom'});
       };
     };
   }
   function renderBoard() {
     const enabled = isAdmin() && loaded && isReady() && !!team.value;
-    for (const control of [team,formation,reset,clear]) control.disabled = busy || !enabled;
+    for (const control of [team,formation,reset,clear,addPosition,removePosition,blank,role]) control.disabled = busy || !enabled;
     // A seleção de time continua disponível quando ainda não existe uma montagem.
     team.disabled = busy || !isAdmin() || !loaded || !isReady() || !team.options.length;
     layout.hidden = !enabled; save.disabled = busy || !enabled; returnPlayer.disabled = true;
     if (!enabled) {markers.replaceChildren(); benchList.replaceChildren(); if (!busy) message.textContent = !isReady() || !loaded ? 'Carregando times, jogadores e montagens…' : 'Cadastre um time ativo para montar a escalação.'; return;}
     const value = draft(), eligible = roster(), cleaned = cleanLineup(value,eligible);
+    if (selectedSlot >= value.slots.length) selectedSlot = -1;
+    addPosition.disabled = busy || value.slots.length >= MAX_POSITIONS;
+    removePosition.disabled = busy || selectedSlot < 0;
+    role.disabled = busy || selectedSlot < 0;
+    role.value = value.slots[selectedSlot]?.role || (selectedSlot === 0 && value.formation !== 'custom' ? 'GOL' : 'LIVRE');
+    reset.disabled = busy || value.formation === 'custom';
     if (JSON.stringify(value.slots) !== JSON.stringify(cleaned.slots)) Object.assign(value,cleaned,{dirty:true});
     if (selected && !eligible.some(p => p.id === selected)) selected = '';
-    instruction.textContent = selected ? `${playerName(eligible.find(p => p.id === selected).name)} selecionado. Toque em uma posição ou em um ponto do campo. Para trocar com outro jogador, toque nele.` : 'Toque em um jogador do banco e depois em uma posição vazia. Para reposicionar, selecione um jogador no campo e toque em outro ponto, ou arraste.';
+    instruction.textContent = selected ? `${playerName(eligible.find(p => p.id === selected).name)} selecionado. Toque em uma posição ou em um ponto do campo. Para trocar com outro jogador, toque nele.` : 'Arraste qualquer posição, mesmo vazia, para criar sua formação. Ou selecione a posição e toque no destino. Adicione e remova posições livremente, até 11 no campo. Toque em um jogador do banco para escalá-lo.';
     formation.value = value.formation;
     const ids = new Set(value.slots.map(s => s.playerId).filter(Boolean)), byId = new Map(eligible.map(p => [p.id,p]));
     count.textContent = `${getTeams()[team.value]?.name || team.value} · ${ids.size} de ${value.slots.length} no campo · ${eligible.length-ids.size} no banco`;
@@ -117,19 +151,20 @@ export function setupTactics({element,isAdmin,getUserId,getPlayers,getTeams,isRe
     save.textContent = busy ? 'Salvando…' : 'Salvar montagem';
     markers.replaceChildren();
     value.slots.forEach((slot,index) => {
-      const player = byId.get(slot.playerId), marker = element('button',null,'tactics-marker'+(selected && selected === slot.playerId ? ' selected' : '')+(player ? ' occupied' : ''));
+      const player = byId.get(slot.playerId), marker = element('button',null,'tactics-marker'+(selectedSlot === index || selected && selected === slot.playerId ? ' selected' : '')+(player ? ' occupied' : ''));
+      const positionRole = slot.role || (index === 0 && value.formation !== 'custom' ? 'GOL' : 'LIVRE');
       marker.type = 'button'; marker.style.left = slot.x+'%'; marker.style.top = slot.y+'%'; marker.disabled = busy;
-      marker.append(element('span',player ? index === 0 ? 'GOL' : String(index+1) : '+','tactics-shirt'),element('span',player ? playerName(player.name) : index === 0 ? 'GOLEIRO' : 'POSIÇÃO LIVRE','tactics-player-name'));
-      marker.setAttribute('aria-label',player ? `${playerName(player.name)}. Selecionar ou arrastar. Use as setas para ajustar a posição.` : `Posição ${index+1}${index === 0 ? ', goleiro' : ''}. Colocar jogador selecionado.`);
-      marker.setAttribute('aria-pressed',String(!!player && selected === slot.playerId));
-      marker.onclick = event => {event.stopPropagation(); if (selected && selected !== slot.playerId) assign(index); else if (player) {selected = selected === slot.playerId ? '' : slot.playerId; renderBoard();} else assign(index);};
+      marker.append(element('span',positionRole === 'LIVRE' ? player ? String(index+1) : '+' : positionRole,'tactics-shirt'),element('span',player ? playerName(player.name) : playerName(POSITION_ROLES[positionRole]),'tactics-player-name'));
+      marker.setAttribute('aria-label',`${player ? playerName(player.name) : 'Posição '+(index+1)} · ${POSITION_ROLES[positionRole]}. Arraste ou use as setas para ajustar a posição.`);
+      marker.setAttribute('aria-pressed',String(selectedSlot === index));
+      marker.onclick = event => {event.stopPropagation(); if (selected && selected !== slot.playerId) assign(index); else {const wasSelected = selectedSlot === index; selectedSlot = wasSelected ? -1 : index; selected = wasSelected ? '' : slot.playerId; renderBoard();}};
       marker.onkeydown = event => {
         const direction = {ArrowLeft:[-2,0],ArrowRight:[2,0],ArrowUp:[0,-2],ArrowDown:[0,2]}[event.key];
-        if (!direction || !player || busy) return; event.preventDefault();
-        slot.x = Math.min(92,Math.max(8,slot.x+direction[0])); slot.y = Math.min(92,Math.max(8,slot.y+direction[1])); value.dirty = true;
+        if (!direction || busy) return; event.preventDefault();
+        slot.x = Math.min(92,Math.max(8,slot.x+direction[0])); slot.y = Math.min(92,Math.max(8,slot.y+direction[1])); value.dirty = true; value.formation = 'custom'; formation.value = 'custom'; reset.disabled = true;
         marker.style.left = slot.x+'%'; marker.style.top = slot.y+'%'; message.textContent = 'Alterações não salvas. Clique em Salvar montagem para guardar.';
       };
-      if (player) attachDrag(marker,player.id); markers.append(marker);
+      attachDrag(marker,player?.id || '',index); markers.append(marker);
     });
     returnPlayer.disabled = busy || !value.slots.some(s => s.playerId && s.playerId === selected);
     benchList.replaceChildren(); const query = search.value.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
@@ -138,7 +173,7 @@ export function setupTactics({element,isAdmin,getUserId,getPlayers,getTeams,isRe
     for (const player of matches) {
       const button = element('button',null,'tactics-bench-player'+(selected === player.id ? ' selected' : '')); button.type = 'button'; button.disabled = busy;
       button.append(element('span',player.goalkeeper ? '🧤' : '♙','tactics-bench-icon'),element('strong',playerName(player.name)));
-      button.setAttribute('aria-pressed',String(selected === player.id)); button.onclick = () => {selected = selected === player.id ? '' : player.id; renderBoard();};
+      button.setAttribute('aria-pressed',String(selected === player.id)); button.onclick = () => {selected = selected === player.id ? '' : player.id; selectedSlot = -1; renderBoard();};
       attachDrag(button,player.id); benchList.append(button);
     }
     if (!matches.length) benchList.append(element('p',!eligible.length ? 'Este time não possui jogadores ativos.' : !available.length ? 'Todos os jogadores estão no campo.' : 'Nenhum jogador encontrado.'));

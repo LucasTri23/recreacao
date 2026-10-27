@@ -1,6 +1,6 @@
 import {readFile} from 'node:fs/promises';
 import {createRequire} from 'node:module';
-import {formationSlots} from '../public/tactics.js';
+import {FORMATIONS,formationSlots} from '../public/tactics.js';
 const require = createRequire(import.meta.url), auth = require('firebase-tools/lib/auth'), {Client} = require('firebase-tools/lib/apiv2');
 auth.setActiveAccount({},auth.getGlobalDefaultAccount());
 const path = suffix => '/databases/(default)/documents/'+suffix;
@@ -13,12 +13,15 @@ function add(label,role,method,expectation,changes = {}) {
   ]});
 }
 for (const role of [null,'pending','director','admin']) for (const method of ['get','create','update','delete']) add(`${role || 'visitante'}: ${method}`,role,method,role === 'admin' ? 'ALLOW' : 'DENY');
-for (const formation of ['4-3-3','3-5-2','2-3-1','2-2-1','2-2']) add('formação '+formation,'admin','create','ALLOW',{formation,slots:formationSlots(formation)});
+for (const formation of Object.keys(FORMATIONS)) add('formação '+formation,'admin','create','ALLOW',{formation,slots:formationSlots(formation)});
+for (let count=0;count<=11;count++) add('personalizada com '+count+' posições','admin','create','ALLOW',{formation:'custom',slots:Array.from({length:count},()=>({playerId:'',x:50,y:50,role:'VOL'}))});
 for (const [label,changes] of [
   ['time divergente',{teamId:'BRANCO'}],['formação inválida',{formation:'invalid'}],['posições faltando',{slots:[]}],
   ['posição fora do campo',{slots:formationSlots().map((s,i) => i ? s : {...s,x:1000})}],
   ['tipo de coordenada inválido',{slots:formationSlots().map((s,i) => i ? s : {...s,y:'50'})}],
   ['responsável forjado',{updatedBy:'other'}],['campo extra',{public:true}],['data forjada',{updatedAt:0}]
+  ,['função inválida',{formation:'custom',slots:[{playerId:'',x:50,y:50,role:'INVALID'}]}]
+  ,['mais de onze posições',{formation:'custom',slots:Array.from({length:12},()=>({playerId:'',x:50,y:50}))}]
 ]) add(label,'admin','create','DENY',changes);
 const content = (await readFile('firestore.rules','utf8')).replaceAll('request.time.toMillis()','1000').replaceAll('request.time','1000');
 const client = new Client({urlPrefix:'https://firebaserules.googleapis.com',apiVersion:'v1'});
