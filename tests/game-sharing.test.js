@@ -25,3 +25,10 @@ test('compartilhamento informa dados indefinidos e permite avisos atualizados', 
   assert.match(fixtureText(week,0,squads,entries,id => id,() => 'inactive'),/Cadastro inativo/);
   assert.match(fixtureText(week,0,squads,[],id => id),/Escalação indisponível/);
 });
+test('publicação coloca todos os goleiros primeiro e identifica sem expor o cadastro privado',() => {
+  const current = entries.filter(e => e.draftId === 'new' && e.teamId === 'BRANCO').map(e => ({...e,goalkeeper:e.name === 'Lucas'}));
+  const text = fixtureText(week,0,squads,current,id => id);
+  assert.match(text,/1\. GOLEIRO: LUCAS ⚠ Jogador não pertence a este time\n2\. FELIPE/);
+  assert.doesNotMatch(text,/DADO PRIVADO/);
+  assert.equal(current[0].position,1);
+});

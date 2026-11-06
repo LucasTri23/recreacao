@@ -279,7 +279,8 @@ service cloud.firestore {
       let draft = get(/databases/$(database)/documents/gameDrafts/$(p.draftId)).data;
       let player = p.playerId == '' ? null : get(/databases/$(database)/documents/players/$(p.playerId)).data;
       return p.keys().hasAll(['draftId','weekId','teamId','playerId','position','rawName','name','issue','actor','updatedAt'])
-        && p.keys().hasOnly(['draftId','weekId','teamId','playerId','position','rawName','name','issue','actor','updatedAt'])
+        && p.keys().hasOnly(['draftId','weekId','teamId','playerId','position','rawName','name','goalkeeper','issue','actor','updatedAt'])
+        && (!('goalkeeper' in p) || (p.goalkeeper is bool && p.goalkeeper == (player != null && player.get('goalkeeper',false))))
         && p.position is int && p.position >= 0 && p.position < 50 && id == p.draftId + '_' + string(p.position)
         && p.rawName is string && p.rawName.size() >= 1 && p.rawName.size() <= 160
         && p.actor == request.auth.uid && p.updatedAt == request.time && draft.actor == request.auth.uid

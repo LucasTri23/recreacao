@@ -54,6 +54,9 @@ add('visitante pode ler programação',`gameWeeks/${weekId}`,'get',null,'ALLOW',
 add('visitante pode ler escalação publicada','gameEntries/'+draftId+'_0','get',null,'ALLOW',test => { delete test.request.auth; test.functionMocks.push(mock('exists','gameSquads/'+squadId,true),mock('get','gameSquads/'+squadId,{data:squad})); },entry);
 add('visitante não lê rascunho','gameEntries/'+draftId+'_0','get',null,'DENY',test => { delete test.request.auth; test.functionMocks.push(mock('exists','gameSquads/'+squadId,true),mock('get','gameSquads/'+squadId,{data:{...squad,draftId:'other'}})); },entry);
 add('visitante não altera programação',`gameWeeks/${weekId}`,'create',week,'DENY',test => { delete test.request.auth; });
+add('goleiro confere com cadastro','gameEntries/'+draftId+'_0','create',{...entry,goalkeeper:true},'ALLOW',test => set(test,'get','players/'+id,{data:{name:entry.name,teams:['VERDE'],goalkeeper:true}}));
+add('linha nao pode ser publicado como goleiro','gameEntries/'+draftId+'_0','create',{...entry,goalkeeper:true},'DENY');
+add('linha pode publicar indicador falso','gameEntries/'+draftId+'_0','create',{...entry,goalkeeper:false},'ALLOW');
 const content = (await readFile('firestore.rules','utf8')).replaceAll('request.time.toMillis()','1000').replaceAll('request.time','1000');
 const client = new Client({urlPrefix:'https://firebaserules.googleapis.com',apiVersion:'v1'});
 const {body} = await client.post('/projects/recreacao-17154:test',{source:{files:[{name:'firestore.rules',content}]},testSuite:{testCases:cases}},{skipLog:{body:true,resBody:true}});

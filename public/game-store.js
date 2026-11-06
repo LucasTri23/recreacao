@@ -54,7 +54,7 @@ export function createGameApi(sdk,db,auth,now = Date.now) {
           const player = entry.playerId ? await get(tx,doc(db,'players',entry.playerId)) : null;
           const position = offset+index, issue = gameEntryIssue(player,data.teamId);
           const rawName = entry.rawName.trim() || player?.name || 'Nome não identificado';
-          const row = {draftId:eventRef.id,weekId:data.weekId,teamId:data.teamId,position,rawName,playerId:player ? entry.playerId : '',name:player?.name || rawName,issue,actor:uid,updatedAt:serverTimestamp()};
+          const row = {draftId:eventRef.id,weekId:data.weekId,teamId:data.teamId,position,rawName,playerId:player ? entry.playerId : '',name:player?.name || rawName,goalkeeper:player?.goalkeeper === true,issue,actor:uid,updatedAt:serverTimestamp()};
           tx.set(doc(db,'gameEntries',`${eventRef.id}_${position}`),row);
           return row;
         })));
@@ -67,7 +67,7 @@ export function createGameApi(sdk,db,auth,now = Date.now) {
         if ((old?.draftId || '') !== baseDraft) throw Error('Outra escalação foi enviada durante esta conferência. Atualize e confira antes de substituir.');
         for (const entry of saved.filter(entry => entry.playerId)) {
           const current = await get(tx,doc(db,'players',entry.playerId));
-          if (gameEntryIssue(current,data.teamId) !== entry.issue || current?.name !== entry.name) throw Error('Um cadastro mudou durante o envio. Envie novamente para publicar os avisos atualizados.');
+          if (gameEntryIssue(current,data.teamId) !== entry.issue || current?.name !== entry.name || (current?.goalkeeper === true) !== entry.goalkeeper) throw Error('Um cadastro mudou durante o envio. Envie novamente para publicar os avisos atualizados.');
         }
         tx.set(squadRef,{weekId:data.weekId,teamId:data.teamId,draftId:eventRef.id,submittedBy:uid,updatedAt:serverTimestamp(),lastEvent:eventRef.id});
         const warnings = saved.filter(entry => entry.issue !== 'ok').length;

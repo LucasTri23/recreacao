@@ -1,6 +1,6 @@
 import {localDay,weekStart,dateValue,weekDeadline,gameWeekDetails,compareGameList,gameListEntries,gameEntryIssue,GAME_ISSUES,canSubmitSquad,rosterChoices,gameReviewSummary} from './game-day.js';
 import {isActivePlayer,playerName} from './domain.js';
-import {roundSummary,fixtureText} from './game-sharing.js';
+import {roundSummary,fixtureText,publishedLineup,publishedName} from './game-sharing.js';
 
 export function setupGameDay({element,getProfile,getUserId,getPlayers,getTeams,mutate,toast,demo}) {
   const link = element('a','⚽ Dia de jogo'); link.href = '#/dia-de-jogo'; link.dataset.nav = 'dia-de-jogo'; document.querySelector('nav').append(link);
@@ -194,9 +194,9 @@ export function setupGameDay({element,getProfile,getUserId,getPlayers,getTeams,m
     if (step === 3) {
       finalPreview.replaceChildren(element('h4','Confira a escalação que ficará pública'));
       const list = element('ol');
-      for (const row of rows.filter(row => !row.ignored)) {
+      for (const row of rows.filter(row => !row.ignored).sort((a,b) => Number(getPlayers().find(p => p.id === b.selectedId)?.goalkeeper === true)-Number(getPlayers().find(p => p.id === a.selectedId)?.goalkeeper === true))) {
         const player = getPlayers().find(p => p.id === row.selectedId), issue = gameEntryIssue(player,choose.value);
-        const item = element('li',playerName(player?.name || row.name));
+        const item = element('li',publishedName({name:player?.name || row.name,goalkeeper:player?.goalkeeper === true}));
         if (issue !== 'ok') { item.className = 'game-warning'; item.append(element('strong',`⚠ ${GAME_ISSUES[issue]}`)); }
         item.append(removalButton(row));
         list.append(item);
@@ -231,7 +231,7 @@ export function setupGameDay({element,getProfile,getUserId,getPlayers,getTeams,m
       if (demo) {
         const draftId = crypto.randomUUID(), squadId = `${data.weekId}_${data.teamId}`;
         demoSquads[squadId] = {...data,draftId,updatedAt:Date.now()}; delete demoSquads[squadId].onProgress;
-        selected.forEach((entry,position) => { const p = getPlayers().find(p => p.id === entry.playerId); demoEntries[`${draftId}_${position}`] = {weekId:data.weekId,teamId:data.teamId,draftId,position,rawName:entry.rawName,playerId:p ? entry.playerId : '',name:p?.name || entry.rawName,issue:gameEntryIssue(p,data.teamId)}; });
+        selected.forEach((entry,position) => { const p = getPlayers().find(p => p.id === entry.playerId); demoEntries[`${draftId}_${position}`] = {weekId:data.weekId,teamId:data.teamId,draftId,position,rawName:entry.rawName,playerId:p ? entry.playerId : '',name:p?.name || entry.rawName,goalkeeper:p?.goalkeeper === true,issue:gameEntryIssue(p,data.teamId)}; });
         squads = Object.values(demoSquads).filter(s => s.weekId === selectedWeek()); entries = Object.values(demoEntries).filter(e => e.weekId === selectedWeek()); persist();
       } else await mutate('submitGameSquad',data);
       toast('Escalação publicada. Pendências ficam sinalizadas para todos.'); clearDraft();
@@ -241,6 +241,7 @@ export function setupGameDay({element,getProfile,getUserId,getPlayers,getTeams,m
   function persist() { localStorage.setItem('recreacao-games-demo',JSON.stringify({weeks:demoWeeks,squads:demoSquads,entries:demoEntries})); }
   function render() {
     const profile = getProfile(), authorized = ['admin','director'].includes(profile?.role);
+    const goalkeeperOf = entry => typeof entry.goalkeeper === 'boolean' ? entry.goalkeeper : getPlayers().find(p => p.id === entry.playerId)?.goalkeeper === true;
     const issueOf = (entry,id) => authorized && getPlayers().length ? gameEntryIssue(getPlayers().find(p => p.id === entry.playerId),id) : entry.issue || 'ok';
     adminLink.hidden = !admin(); adminRestriction.hidden = admin(); adminWeekLabel.hidden = schedule.hidden = !admin();
     adminReference.value = reference.value; adminReference.disabled = busy;
@@ -296,26 +297,26 @@ export function setupGameDay({element,getProfile,getUserId,getPlayers,getTeams,m
         const share = element('div',null,'game-fixture-share'), copy = element('button','Copiar jogo para WhatsApp','row-action'), copyStatus = element('p'); copy.type = 'button'; copyStatus.setAttribute('role','status');
         const fallbackLabel = element('label','Copie este texto e cole no WhatsApp'), fallback = element('textarea'); fallback.readOnly = true; fallback.rows = 10; fallbackLabel.append(fallback); fallbackLabel.hidden = true;
         copy.onclick = async () => {
-          const text = fixtureText(week,matchIndex,squads,entries,nameOf,issueOf);
+          const text = fixtureText(week,matchIndex,squads,entries,nameOf,issueOf,goalkeeperOf);
           try { await navigator.clipboard.writeText(text); copyStatus.textContent = 'Jogo copiado! Cole na conversa do WhatsApp.'; fallbackLabel.hidden = true; }
           catch { fallback.value = text; fallbackLabel.hidden = false; fallback.focus(); fallback.select(); copyStatus.textContent = 'A cópia automática não está disponível. Selecione e copie o texto abaixo.'; }
         };
         share.append(copy,copyStatus,fallbackLabel); matchCard.append(share);
         official.append(matchCard);
       }
-      const card = element('div',null,'duplicate-card'), squad = squads.find(s => s.teamId === id), lineup = entries.filter(e => e.teamId === id && e.draftId === squad?.draftId).sort((a,b) => (a.position ?? 0)-(b.position ?? 0));
+      const card = element('div',null,'duplicate-card'), squad = squads.find(s => s.teamId === id), originalLineup = entries.filter(e => e.teamId === id && e.draftId === squad?.draftId).sort((a,b) => (a.position ?? 0)-(b.position ?? 0)), lineup = publishedLineup(originalLineup,goalkeeperOf);
       card.append(element('h4',`${nameOf(id)} · ${squad ? lineup.length+' jogadores' : 'aguardando escalação'}`));
       const list = element('ol');
       let warnings = 0;
       for (const [index,entry] of lineup.entries()) {
         const issue = issueOf(entry,id);
-        const item = element('li'); item.append(element('span',playerName(entry.name)));
+        const item = element('li'); item.append(element('span',publishedName(entry,goalkeeperOf)));
         if (issue !== 'ok') {
           warnings++; item.className = 'game-warning'; item.append(element('strong',` ⚠ ${GAME_ISSUES[issue] || GAME_ISSUES.unknown}`));
           if (authorized && canSubmitSquad(profile,week,id,getTeams())) {
             const fix = element('button','Ajustar: escolher jogador do time','row-action');
             fix.disabled = busy;
-            fix.onclick = () => { choose.value = id; loadPublished(true); const select = results.children[index]?.querySelector('select'); results.children[index]?.scrollIntoView({behavior:'smooth',block:'center'}); select?.focus(); };
+            fix.onclick = () => { const rowIndex = originalLineup.indexOf(entry); choose.value = id; loadPublished(true); const select = results.children[rowIndex]?.querySelector('select'); results.children[rowIndex]?.scrollIntoView({behavior:'smooth',block:'center'}); select?.focus(); };
             item.append(fix);
           }
         }

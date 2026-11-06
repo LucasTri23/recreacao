@@ -26,6 +26,14 @@ test('admin programa a semana e diretor publica somente jogadores do próprio ti
   await assert.rejects(api('submitGameSquad',{weekId:'2026-10-19',teamId:'BRANCO',playerIds:[ids[0]]}),/bloqueado/);
   await assert.rejects(api('saveGameWeek',{gameDate:'2026-10-25',teams:['VERDE'],status:'open'}),/administração/);
 });
+test('publicação guarda goleiro a partir do cadastro sem confiar na indicação enviada pelo diretor',async () => {
+  const {api,records,ids} = await fixture();
+  records.get('players/'+ids[1]).goalkeeper = true;
+  await api('submitGameSquad',{weekId:'2026-10-19',teamId:'VERDE',entries:[{playerId:ids[0],rawName:'',goalkeeper:true},{playerId:ids[1],rawName:''}]});
+  const squad = records.get('gameSquads/2026-10-19_VERDE');
+  assert.equal(records.get('gameEntries/'+squad.draftId+'_0').goalkeeper,false);
+  assert.equal(records.get('gameEntries/'+squad.draftId+'_1').goalkeeper,true);
+});
 test('admin exclui último confronto com escalação, preserva jogadores e não ressuscita a lista ao recriar',async () => {
   const {api,records,ids} = await fixture();
   await api('submitGameSquad',{weekId:'2026-10-19',teamId:'VERDE',playerIds:[ids[0]]});
