@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {parseHTML} from 'linkedom';
 import {setupTactics} from '../public/tactics-ui.js';
 
-function setup(t,admin = true,demo = true) {
+function setup(t,admin = true,demo = true,prepare = true) {
   const {document,window} = parseHTML('<html><body><nav></nav><main><footer></footer></main></body></html>');
   Object.defineProperty(window.HTMLSelectElement.prototype,'value',{
     configurable:true,
@@ -18,13 +18,19 @@ function setup(t,admin = true,demo = true) {
   const notices = [];
   const ui = setupTactics({element,isAdmin:() => admin,getUserId:() => 'u',getPlayers:() => players,getTeams:() => ({VERDE:{name:'VERDE',status:'active'},BRANCO:{name:'BRANCO',status:'active'}}),isReady:() => true,toast:text => notices.push(text),demo});
   ui.refresh();
+  const button = text => [...document.querySelectorAll('button')].find(b => b.textContent === text);
+  const openField = (teamId = 'VERDE') => {
+    const team = document.querySelector('[aria-label="Time do campinho"]'); team.value = teamId; team.onchange();
+    click(button('Selecionar todo o elenco')); click(button('Montar no campo →'));
+  };
+  if (admin && demo && prepare) openField();
   t.after(() => {globalThis.document = previous.document; globalThis.localStorage = previous.localStorage;});
-  return {document,ui,storage,players,notices,setAdmin:value => admin = value,button:text => [...document.querySelectorAll('button')].find(b => b.textContent === text)};
+  return {document,ui,storage,players,notices,openField,setAdmin:value => admin = value,button};
 }
 const click = button => button.onclick({stopPropagation(){}});
 
 test('admin monta, troca, reposiciona e devolve jogador ao banco, salvando por time',async t => {
-  const {document,button,storage,notices} = setup(t);
+  const {document,button,storage,notices,openField} = setup(t);
   assert.match(document.querySelector('.tactics-bench-list').textContent,/ANA/);
   assert.doesNotMatch(document.querySelector('.tactics-bench-list').textContent,/CAIO|DAVI/);
   click(document.querySelector('.tactics-bench-player'));
@@ -44,9 +50,9 @@ test('admin monta, troca, reposiciona e devolve jogador ao banco, salvando por t
   await button('Salvar montagem').onclick();
   const saved = JSON.parse(storage.get('recreacao-tactics-demo')).VERDE;
   assert.equal(saved.slots.filter(s => s.playerId).length,1);
-  assert.equal(saved.slots[0].playerId,'b'); assert.match(notices.at(-1),/salva/);
+  assert.equal(saved.slots[0].playerId,'b'); assert.match(notices.at(-1),/salv/);
   const team = document.querySelector('select[aria-label="Time do campinho"]');
-  team.value = 'BRANCO'; team.onchange(); assert.match(document.querySelector('.tactics-bench-list').textContent,/DAVI/);
+  openField('BRANCO'); assert.match(document.querySelector('.tactics-bench-list').textContent,/DAVI/);
   team.value = 'VERDE'; team.onchange(); assert.match(document.querySelector('.tactics-marker').textContent,/BRUNO/);
 });
 test('mudança de formação preserva jogadores e atualização de vínculo os retira do campo',t => {
@@ -60,10 +66,10 @@ test('mudança de formação preserva jogadores e atualização de vínculo os r
   assert.doesNotMatch(document.querySelector('.tactics-bench-list').textContent,/ANA/);
 });
 test('diretores e visitantes não têm acesso e perda de permissão limpa o campo',t => {
-  const {document,ui,setAdmin} = setup(t,false);
+  const {document,ui,setAdmin,openField} = setup(t,false);
   assert.equal(document.querySelector('[data-nav="campinho"]').hidden,true);
   assert.equal(document.querySelector('.tactics-markers').children.length,0);
-  setAdmin(true); ui.refresh(); assert.equal(document.querySelectorAll('.tactics-marker').length,11);
+  setAdmin(true); ui.refresh(); openField(); assert.equal(document.querySelectorAll('.tactics-marker').length,11);
   setAdmin(false); ui.refresh(); assert.equal(document.querySelector('.tactics-markers').children.length,0);
   assert.equal(document.querySelector('.tactics-bench-list').children.length,0);
 });
@@ -85,7 +91,7 @@ test('arrastar do banco para o campo e mover pelo toque mantém coordenadas e jo
   assert.equal([...document.querySelectorAll('.tactics-marker')].filter(b => b.textContent.includes('ANA')).length,1);
 });
 test('Firebase salva montagem privada e recusa sobrescrever edição concorrente',async t => {
-  const {document,ui,button,notices} = setup(t,true,false);
+  const {document,ui,button,notices,openField} = setup(t,true,false);
   const records = new Map(), writes = []; let listener;
   const emit = () => listener({docs:[...records].map(([id,value]) => ({id,data:() => value}))});
   const sdk = {
@@ -94,6 +100,7 @@ test('Firebase salva montagem privada e recusa sobrescrever edição concorrente
     runTransaction:async (_,callback) => {await callback({get:async ref => ({data:() => records.get(ref.id)}),set:(ref,data) => {writes.push({ref,data}); records.set(ref.id,data);}}); emit();}
   };
   ui.connect(sdk,{}); await Promise.resolve();
+  openField();
   click(document.querySelector('.tactics-bench-player')); click(document.querySelector('.tactics-marker'));
   await button('Salvar montagem').onclick();
   assert.equal(writes.length,1); assert.equal(writes[0].ref.collection,'tacticalLineups');
@@ -138,4 +145,43 @@ test('arrastar jogador ao campo vazio cria posição e remover posição devolve
   click(button('Remover posição selecionada'));
   assert.equal(document.querySelectorAll('.tactics-marker').length,0);
   assert.match(document.querySelector('.tactics-bench-list').textContent,/ANA/);
+});
+test('fluxo exige time e seleção antes do campo, mantém só os escolhidos e salva suas posições',async t => {
+  const {document,button,storage} = setup(t,true,true,false);
+  const editor = document.querySelector('[data-tactics-editor]'); assert.equal(editor.hidden,true);
+  const team = document.querySelector('[aria-label="Time do campinho"]'); team.value = 'VERDE'; team.onchange();
+  assert.equal(button('Montar no campo →').disabled,true);
+  assert.doesNotMatch(document.querySelector('.tactics-selection-list').textContent,/CAIO|DAVI/);
+  const checkbox = document.querySelector('[data-squad-player="a"]'); checkbox.checked = true; checkbox.onchange();
+  const position = document.querySelector('[aria-label="Posição de ANA"]'); position.value = 'VOL'; position.onchange();
+  click(button('Montar no campo →')); assert.equal(editor.hidden,false);
+  assert.match(document.querySelector('.tactics-bench-list').textContent,/ANA.*VOL/);
+  assert.doesNotMatch(document.querySelector('.tactics-bench-list').textContent,/BRUNO/);
+  click(document.querySelector('.tactics-bench-player')); click(document.querySelector('.tactics-marker'));
+  assert.match(document.querySelector('.tactics-marker').textContent,/VOL/);
+  click(button('← Editar jogadores e reservas')); assert.equal(editor.hidden,true);
+  assert.equal(document.querySelector('[data-squad-player="a"]').checked,true);
+  click(button('Montar no campo →')); await button('Salvar montagem').onclick();
+  const saved = JSON.parse(storage.get('recreacao-tactics-demo')).VERDE;
+  assert.deepEqual(saved.squadIds,['a']); assert.deepEqual(saved.playerRoles,{a:'VOL'});
+});
+test('distribuição prioriza goleiro, mantém reservas, permite substituição por arraste e desfazer',async t => {
+  const {document,button,players,openField,storage} = setup(t,true,true,false);
+  players[1].goalkeeper = true;
+  players.push(...Array.from({length:10},(_,i) => ({id:'extra'+i,name:'EXTRA '+i,teams:['VERDE']})));
+  openField(); click(button('Distribuir jogadores no campo'));
+  assert.equal(document.querySelectorAll('.tactics-marker.occupied').length,11);
+  assert.match(document.querySelector('.tactics-marker').textContent,/BRUNO/);
+  assert.equal(document.querySelectorAll('.tactics-bench-player').length,1);
+  const before = document.querySelector('.tactics-marker').textContent;
+  const reserve = document.querySelector('.tactics-bench-player'), reserveName = reserve.querySelector('strong').textContent;
+  const field = document.querySelector('.tactics-pitch'); field.getBoundingClientRect = () => ({left:0,top:0,right:500,bottom:700,width:500,height:700});
+  reserve.onpointerdown({button:0,pointerId:1,clientX:550,clientY:100}); reserve.onpointermove({clientX:250,clientY:623}); reserve.onpointerup({clientX:250,clientY:623});
+  assert.ok(document.querySelector('.tactics-marker').textContent.includes(reserveName));
+  assert.match(document.querySelector('.tactics-bench-list').textContent,/BRUNO/);
+  click(button('Desfazer')); assert.equal(document.querySelector('.tactics-marker').textContent,before);
+  click(button('Refazer')); assert.ok(document.querySelector('.tactics-marker').textContent.includes(reserveName));
+  await button('Salvar montagem').onclick();
+  const saved = JSON.parse(storage.get('recreacao-tactics-demo')).VERDE;
+  assert.equal(saved.squadIds.length,12); assert.equal(saved.slots.filter(s => s.playerId).length,11);
 });

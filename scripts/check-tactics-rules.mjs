@@ -15,11 +15,14 @@ function add(label,role,method,expectation,changes = {}) {
 for (const role of [null,'pending','director','admin']) for (const method of ['get','create','update','delete']) add(`${role || 'visitante'}: ${method}`,role,method,role === 'admin' ? 'ALLOW' : 'DENY');
 for (const formation of Object.keys(FORMATIONS)) add('formação '+formation,'admin','create','ALLOW',{formation,slots:formationSlots(formation)});
 for (let count=0;count<=11;count++) add('personalizada com '+count+' posições','admin','create','ALLOW',{formation:'custom',slots:Array.from({length:count},()=>({playerId:'',x:50,y:50,role:'VOL'}))});
+add('montagem com reservas e posições','admin','create','ALLOW',{squadIds:['a','b'],playerRoles:{a:'GOL',b:'VOL'}});
 for (const [label,changes] of [
   ['time divergente',{teamId:'BRANCO'}],['formação inválida',{formation:'invalid'}],['posições faltando',{slots:[]}],
   ['posição fora do campo',{slots:formationSlots().map((s,i) => i ? s : {...s,x:1000})}],
   ['tipo de coordenada inválido',{slots:formationSlots().map((s,i) => i ? s : {...s,y:'50'})}],
   ['responsável forjado',{updatedBy:'other'}],['campo extra',{public:true}],['data forjada',{updatedAt:0}]
+  ,['reservas inválidas',{squadIds:'invalid'}],['posições inválidas',{playerRoles:[]}]
+  ,['coordenada booleana',{slots:formationSlots().map((s,i) => i ? s : {...s,x:true})}]
   ,['função inválida',{formation:'custom',slots:[{playerId:'',x:50,y:50,role:'INVALID'}]}]
   ,['mais de onze posições',{formation:'custom',slots:Array.from({length:12},()=>({playerId:'',x:50,y:50}))}]
 ]) add(label,'admin','create','DENY',changes);

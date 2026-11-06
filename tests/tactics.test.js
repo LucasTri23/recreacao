@@ -41,3 +41,11 @@ test('mover e trocar jogadores não duplica o mesmo jogador',() => {
   assert.equal(moved.slots[1].playerId,''); assert.equal(moved.slots[4].playerId,'a');
   assert.equal(lineup.slots[0].playerId,'a');
 });
+test('seleção e funções são limpas após exclusão ou transferência sem perder os reservas ativos',() => {
+  const roster = [{id:'a',name:'ANA',teams:['VERDE']},{id:'b',name:'BRUNO',teams:['VERDE']}];
+  const lineup = {formation:'2-2',squadIds:['a','b','removed','a'],playerRoles:{a:'VOL',b:'GOL',removed:'ATA',unknown:'INVALID'},slots:formationSlots('2-2')};
+  lineup.slots[0].playerId = 'removed';
+  const cleaned = cleanLineup(lineup,roster);
+  assert.deepEqual(cleaned.squadIds,['a','b']); assert.deepEqual(cleaned.playerRoles,{a:'VOL',b:'GOL'});
+  assert.ok(cleaned.slots.every(s => !s.playerId));
+});

@@ -47,9 +47,11 @@ export function tacticalRoster(players,teamId) {
 export function cleanLineup(lineup,roster) {
   const formation = Object.hasOwn(FORMATIONS,lineup?.formation) ? lineup.formation : '4-4-2';
   const slots = formation === 'custom' ? (Array.isArray(lineup?.slots) ? lineup.slots.slice(0,MAX_POSITIONS) : []).map(() => ({playerId:'',x:50,y:50})) : formationSlots(formation), seen = new Set(), eligible = new Set(roster.map(p => p.id));
-  return {formation,slots:slots.map((fallback,index) => {
+  const squadIds = Array.isArray(lineup?.squadIds) ? [...new Set(lineup.squadIds.filter(id => eligible.has(id)))].slice(0,200) : null;
+  const playerRoles = lineup?.playerRoles && typeof lineup.playerRoles === 'object' ? Object.fromEntries(Object.entries(lineup.playerRoles).filter(([id,role]) => eligible.has(id) && (!squadIds || squadIds.includes(id)) && Object.hasOwn(POSITION_ROLES,role))) : null;
+  return {formation,...(squadIds ? {squadIds} : {}),...(playerRoles ? {playerRoles} : {}),slots:slots.map((fallback,index) => {
     const source = lineup?.slots?.[index];
-    const playerId = eligible.has(source?.playerId) && !seen.has(source.playerId) ? source.playerId : '';
+    const playerId = eligible.has(source?.playerId) && (!squadIds || squadIds.includes(source.playerId)) && !seen.has(source.playerId) ? source.playerId : '';
     if (playerId) seen.add(playerId);
     const role = Object.hasOwn(POSITION_ROLES,source?.role) ? source.role : fallback.role;
     return {playerId,x:Number.isFinite(source?.x) ? Math.min(92,Math.max(8,source.x)) : fallback.x,y:Number.isFinite(source?.y) ? Math.min(92,Math.max(8,source.y)) : fallback.y,...(role ? {role} : {})};

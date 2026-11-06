@@ -14,13 +14,17 @@ service cloud.firestore {
       return s.keys().hasOnly(['playerId','x','y','role'])
         && s.get('role','LIVRE').matches('^(LIVRE|GOL|ZAG|LD|LE|ALA|VOL|MC|MD|ME|MEI|PD|PE|SA|ATA)$')
         && s.playerId.matches('^[a-zA-Z0-9_-]{0,128}$')
-        && x is number && x >= 8 && x <= 92
-        && y is number && y >= 8 && y <= 92;
+        && x >= 8 && x <= 92
+        && y >= 8 && y <= 92;
     }
     function validTacticalLineup(d,teamId) {
       let slots = d.slots;
       let size = slots.size();
-      return d.keys().hasOnly(['teamId','formation','slots','updatedAt','updatedBy'])
+      let squad = d.get('squadIds',[]);
+      let roles = d.get('playerRoles',{});
+      return d.keys().hasOnly(['teamId','formation','slots','updatedAt','updatedBy','squadIds','playerRoles'])
+        && squad is list && squad.size() <= 200
+        && roles is map && roles.size() <= 200
         && d.teamId == teamId && d.updatedBy == request.auth.uid && d.updatedAt == request.time
         && slots is list
         && size >= 0 && size <= 11
