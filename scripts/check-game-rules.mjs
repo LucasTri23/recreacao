@@ -45,6 +45,8 @@ add('nome sem cadastro pode ser publicado com aviso','gameEntries/'+draftId+'_0'
 add('diretor de outro time é recusado','gameEntries/'+draftId+'_0','create',entry,'DENY',test => set(test,'get','users/u',{data:{role:'director',team:'BRANCO'}}));
 add('prazo esgotado bloqueia diretor','gameEntries/'+draftId+'_0','create',entry,'DENY',test => set(test,'get',`gameWeeks/${weekId}`,{data:{...week,deadline:999}}));
 add('semana fechada bloqueia diretor','gameEntries/'+draftId+'_0','create',entry,'DENY',test => set(test,'get',`gameWeeks/${weekId}`,{data:{...week,status:'closed'}}));
+add('dia do jogo liberado permite diretor após o prazo','gameEntries/'+draftId+'_0','create',entry,'ALLOW',test => set(test,'get',`gameWeeks/${weekId}`,{data:{...week,deadline:999,status:'gameday'}}));
+add('dia do jogo liberado não abre outro time','gameEntries/'+draftId+'_0','create',entry,'DENY',test => { set(test,'get','users/u',{data:{role:'director',team:'BRANCO'}}); set(test,'get',`gameWeeks/${weekId}`,{data:{...week,deadline:999,status:'gameday'}}); });
 add('admin corrige depois do prazo','gameEntries/'+draftId+'_0','create',entry,'ALLOW',test => { admin(test); set(test,'get',`gameWeeks/${weekId}`,{data:{...week,deadline:999,status:'closed'}}); });
 add('diretor publica escalação','gameSquads/'+squadId,'create',squad,'ALLOW');
 add('histórico da escalação','events/'+draftId,'create',squadEvent,'ALLOW');

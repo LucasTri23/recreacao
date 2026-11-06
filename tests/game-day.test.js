@@ -59,6 +59,12 @@ test('semana começa segunda e prazo inclui quinta inteira em Brasília', () => 
   assert.ok(canSubmitSquad({role:'admin'},{...week,status:'closed'},'VERDE',DEFAULT_TEAMS,week.deadline+10000));
   assert.equal(canSubmitSquad({role:'director',team:'BRANCO'},week,'VERDE',DEFAULT_TEAMS,1),false);
   assert.equal(canSubmitSquad({role:'admin'},week,'AZUL',DEFAULT_TEAMS,1),false);
+  const gameday = {...week,status:'gameday'}, gameEnd = Date.parse('2026-10-26T03:00:00Z');
+  assert.ok(canSubmitSquad({role:'director',team:'VERDE'},gameday,'VERDE',DEFAULT_TEAMS,week.deadline+1));
+  assert.ok(canSubmitSquad({role:'director',team:'VERDE'},gameday,'VERDE',DEFAULT_TEAMS,gameEnd-1));
+  assert.equal(canSubmitSquad({role:'director',team:'VERDE'},gameday,'VERDE',DEFAULT_TEAMS,gameEnd),false);
+  assert.equal(canSubmitSquad({role:'director',team:'BRANCO'},gameday,'VERDE',DEFAULT_TEAMS,gameEnd-1),false);
+  assert.equal(gameWeekDetails({gameDate:'2026-10-25',teams:['VERDE','BRANCO'],status:'gameday'},DEFAULT_TEAMS).status,'gameday');
   assert.throws(() => weekStart('2026-02-30'),/válida/);
 });
 test('programação guarda pares em ordem e rejeita confronto incompleto ou time repetido', () => {

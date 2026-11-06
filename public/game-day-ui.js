@@ -1,4 +1,4 @@
-import {localDay,weekStart,dateValue,weekDeadline,gameWeekDetails,compareGameList,gameListEntries,gameEntryIssue,GAME_ISSUES,canSubmitSquad,rosterChoices,gameReviewSummary} from './game-day.js';
+import {localDay,weekStart,dateValue,weekDeadline,WEEK_STATUS,gameWeekDetails,compareGameList,gameListEntries,gameEntryIssue,GAME_ISSUES,canSubmitSquad,rosterChoices,gameReviewSummary} from './game-day.js';
 import {isActivePlayer,playerName} from './domain.js';
 import {roundSummary,fixtureText,publishedLineup,publishedName} from './game-sharing.js';
 
@@ -13,13 +13,13 @@ export function setupGameDay({element,getProfile,getUserId,getPlayers,getTeams,m
   const title = element('h2','Dia de jogo'); title.tabIndex = -1;
   const weekLabel = element('label','Escolha uma data da semana'), reference = element('input'); reference.type = 'date'; reference.value = localDay(); weekLabel.append(reference);
   const message = element('p',null,'notice'); message.setAttribute('role','status');
-  page.append(title,element('p','O admin define os times da semana. O diretor envia sua escalação até quinta-feira, às 23h59 (Brasília). Depois do prazo, o admin pode corrigir.'),weekLabel,message);
+  page.append(title,element('p','O admin define os times da semana. O diretor envia sua escalação até quinta-feira, às 23h59 (Brasília). Depois do prazo, o admin pode corrigir ou liberar a alteração até o fim do dia do jogo.'),weekLabel,message);
   const schedule = element('form',null,'game-panel'), scheduleTitle = element('h3','Programação da semana');
   const dateLabel = element('label','Data do jogo'), gameDate = element('input'); gameDate.type = 'date'; gameDate.required = true; dateLabel.append(gameDate);
   const teamChecks = element('div',null,'game-match-editor');
   const addMatch = element('button','Deseja adicionar outro jogo?','row-action'); addMatch.type = 'button';
   const statusLabel = element('label','Envio de escalações'), status = element('select');
-  for (const [value,label] of [['open','Aberto até o prazo'],['closed','Fechado para diretores']]) { const option = element('option',label); option.value = value; status.append(option); } statusLabel.append(status);
+  for (const [value,label] of Object.entries(WEEK_STATUS)) { const option = element('option',label); option.value = value; status.append(option); } statusLabel.append(status);
   const noteLabel = element('label','Observações públicas da semana'), notes = element('textarea'); notes.maxLength = 500; noteLabel.append(notes);
   const deadlineHint = element('p'), scheduleError = element('p',null,'form-error'), saveWeek = element('button','Salvar programação','primary'); saveWeek.type = 'submit'; scheduleError.setAttribute('role','alert');
   schedule.append(scheduleTitle,dateLabel,teamChecks,addMatch,statusLabel,noteLabel,deadlineHint,scheduleError,saveWeek); adminPage.append(schedule);
@@ -101,7 +101,7 @@ export function setupGameDay({element,getProfile,getUserId,getPlayers,getTeams,m
     addMatch.disabled = busy || matchDraft.some(pair => pair.some(id => !id)) || remaining < 2;
   }
   addMatch.onclick = () => { matchDraft.push(['','']); matchInfo.push({time:'',field:''}); dirty = true; renderMatches(); teamChecks.lastElementChild?.querySelector('select')?.focus(); };
-  function updateDeadline() { try { deadlineHint.textContent = `Diretores podem enviar até quinta-feira ${weekDeadline(gameDate.value).cutoff}, às 23h59 (Brasília).`; } catch { deadlineHint.textContent = ''; } }
+  function updateDeadline() { try { deadlineHint.textContent = status.value === 'gameday' ? `Diretores podem enviar e alterar até o dia do jogo (${dateValue(gameDate.value).toISOString().slice(0,10)}), às 23h59 (Brasília), mesmo depois de quinta-feira.` : `Diretores podem enviar até quinta-feira ${weekDeadline(gameDate.value).cutoff}, às 23h59 (Brasília).`; } catch { deadlineHint.textContent = ''; } }
   schedule.onsubmit = async event => {
     event.preventDefault(); saveWeek.disabled = true; scheduleError.textContent = '';
     try {
@@ -157,7 +157,7 @@ export function setupGameDay({element,getProfile,getUserId,getPlayers,getTeams,m
   function validate() {
     let error = '';
     let warningCount = 0;
-    try { if (!ready) throw Error('Aguarde o carregamento da semana.'); if (!canSubmitSquad(getProfile(),week,choose.value,getTeams())) throw Error('Envio indisponível para este time ou fora do prazo. Após quinta-feira, peça ao admin para corrigir.'); const selected = gameListEntries(rows); warningCount = selected.filter(entry => gameEntryIssue(getPlayers().find(p => p.id === entry.playerId),choose.value) !== 'ok').length; } catch(e) { error = e.message; }
+    try { if (!ready) throw Error('Aguarde o carregamento da semana.'); if (!canSubmitSquad(getProfile(),week,choose.value,getTeams())) throw Error('Envio indisponível para este time ou fora do prazo. Após quinta-feira, peça ao admin para corrigir ou liberar a alteração no dia do jogo.'); const selected = gameListEntries(rows); warningCount = selected.filter(entry => gameEntryIssue(getPlayers().find(p => p.id === entry.playerId),choose.value) !== 'ok').length; } catch(e) { error = e.message; }
     const permitted = ready && canSubmitSquad(getProfile(),week,choose.value,getTeams());
     publish.disabled = busy || !permitted || (step === 1 && mode.value === 'txt' ? !raw.value.trim() : !!error) || (step === 3 && !ack.checked);
     if (!busy) feedback.textContent = submitError || (step === 1 && permitted ? 'Selecione os jogadores ou cole a lista para conferir.' : error) || (warningCount ? `${warningCount} pendência(s). Você pode publicar; os avisos ficarão visíveis para todos.` : 'Nomes conferidos. Avance para publicar.');
@@ -247,7 +247,7 @@ export function setupGameDay({element,getProfile,getUserId,getPlayers,getTeams,m
     adminReference.value = reference.value; adminReference.disabled = busy;
     const eligible = authorized && week && (admin() || week.teams.includes(profile?.team));
     launch.hidden = !eligible; editor.hidden = !eligible || !opened;
-    message.textContent = !ready ? 'Carregando programação e escalações públicas…' : !week ? `Semana ${selectedWeek()}: o administrador ainda não definiu os times que vão jogar.` : `Jogo: ${week.gameDate} · Envio até quinta-feira ${week.cutoff}, às 23h59 · ${week.status === 'open' ? 'Envio aberto até o prazo' : 'Fechado para diretores'}${week.notes ? ' · '+week.notes : ''}`;
+    message.textContent = !ready ? 'Carregando programação e escalações públicas…' : !week ? `Semana ${selectedWeek()}: o administrador ainda não definiu os times que vão jogar.` : `Jogo: ${week.gameDate} · ${week.status === 'gameday' ? `Alteração liberada até ${week.gameDate}, às 23h59 · Envio aberto até o fim do dia do jogo` : `Envio até quinta-feira ${week.cutoff}, às 23h59 · ${week.status === 'open' ? 'Envio aberto até o prazo' : 'Fechado para diretores'}`}${week.notes ? ' · '+week.notes : ''}`;
     const oldSelection = choose.value;
     const permitted = (week?.teams || []).filter(id => admin() || id === profile?.team);
     choose.replaceChildren();

@@ -14,6 +14,8 @@ export function weekDeadline(gameDate) {
   const cutoff = thursday.toISOString().slice(0,10);
   return {cutoff,deadline:Date.parse(cutoff+'T00:00:00-03:00')+86400000};
 }
+export function gameDayEnd(gameDate) { dateValue(gameDate); return Date.parse(gameDate+'T00:00:00-03:00')+86400000; }
+export const WEEK_STATUS = {open:'Aberto até o prazo',gameday:'Aberto até o fim do dia do jogo',closed:'Fechado para diretores'};
 export function gameWeekDetails(data,teams) {
   dateValue(data.gameDate);
   if (!Array.isArray(data.teams)) throw Error('Escolha os times da semana.');
@@ -21,7 +23,7 @@ export function gameWeekDetails(data,teams) {
   if ((ids.length === 0 && data.status !== 'closed') || ids.length > 100 || ids.length % 2) throw Error('Cada jogo precisa de dois times. Complete ou remova o jogo incompleto.');
   if (new Set(ids).size !== ids.length) throw Error('Um time não pode participar de mais de um jogo na mesma programação.');
   if (!ids.every(id => Object.hasOwn(teams,id) && teams[id].status === 'active')) throw Error('Escolha apenas times ativos para os jogos.');
-  if (!['open','closed'].includes(data.status)) throw Error('Situação da semana inválida.');
+  if (!Object.hasOwn(WEEK_STATUS,data.status)) throw Error('Situação da semana inválida.');
   const notes = String(data.notes || '').trim(); if (notes.length > 500) throw Error('As observações devem ter até 500 caracteres.');
   const count = ids.length/2;
   const matchTimes = data.matchTimes ?? Array(count).fill(''), matchFields = data.matchFields ?? Array(count).fill('');
@@ -34,7 +36,10 @@ export function canSubmitSquad(profile,week,teamId,teams,now = Date.now()) {
   if (!week || !['admin','director'].includes(profile?.role) || !Array.isArray(week.teams) || !week.teams.includes(teamId) || teams[teamId]?.status !== 'active') return false;
   if (profile.role === 'admin') return true;
   const deadline = week.deadline?.toMillis?.() ?? week.deadline;
-  return profile.team === teamId && week.status === 'open' && now < deadline;
+  if (profile.team !== teamId) return false;
+  if (week.status === 'open') return now < deadline;
+  if (week.status === 'gameday') return now < Math.max(deadline,gameDayEnd(week.gameDate));
+  return false;
 }
 export function extractGameNames(text) {
   const position = '(?:zag(?:ueiro)?|gol(?:eiro)?|lat(?:eral)?|ld|le|vol(?:ante)?|mei(?:a|o)?|ata(?:cante)?|ponta|centroavante)';
